@@ -7,7 +7,7 @@ This project uses a RadiationD v1.1 cajoe and gives it additional functionality 
 1x assembled RadiationD v1.1 Cajoe (for example look for "diy geiger" on the bay)  
 1x LCD2004 Display with i2c (I recommend to buy a display that already has the i2c interface soldered onto)  
 1x Wemos D1 R2  
-3d printed front- & back-plate https://www.printables.com/model/399474-diy-geiger-counter  
+3d printed front- & back-plate https://www.printables.com/model/399474-ngnt-geiger-counter-not-great-not-terrible  
 7x M-F dupont cables  
 
 screws:  
