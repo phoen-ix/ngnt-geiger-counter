@@ -60,7 +60,6 @@ void loop() {
       countdownFinished = true;
     }
   } else {
-    // Measurement
     if (currentMillis - previousMillis > ONE_MINUTE) {
       previousMillis = currentMillis;
 
