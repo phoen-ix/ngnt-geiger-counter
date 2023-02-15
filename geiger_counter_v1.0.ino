@@ -1,10 +1,10 @@
-// LCD -> Wemos R1 D2
+// LCD -> Wemos D1 R2
 // GND -> GND
 // VCC -> 3.3V
 // SDA -> SDA/D2
 // SCL -> SCL/D1
 //
-// RadiationD Cajoe V1.1 -> Wemos R1 D2
+// RadiationD Cajoe V1.1 -> Wemos D1 R2
 // GND -> GND
 // 5V  -> 5V
 // VIN -> D6(GPIO12)
