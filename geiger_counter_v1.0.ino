@@ -21,17 +21,17 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 20 char
 
 const float cpm_constant = 0.0057;
 const int geiger_pin = 12;
-unsigned long cpm_counter;
+unsigned long impulse_counter;
 unsigned long previousMillis;
 unsigned long countdownMillis;
 bool countdownFinished = false;
 
 void impulse() {
-  cpm_counter++;
+  impulse_counter++;
 }
 
 void setup() {
-  cpm_counter = 0;
+  impulse_counter = 0;
   pinMode(geiger_pin, INPUT);
   attachInterrupt(digitalPinToInterrupt(geiger_pin), impulse, FALLING);
 
@@ -46,7 +46,6 @@ void loop() {
   unsigned long currentMillis = millis();
 
   if (!countdownFinished) {
-    // Countdown
     long remainingSeconds = (countdownMillis - currentMillis) / 1000;
     if (remainingSeconds < 0) {
       remainingSeconds = 0;
@@ -59,22 +58,23 @@ void loop() {
     if (remainingSeconds == 0) {
       countdownFinished = true;
     }
-  } else {
-    if (currentMillis - previousMillis > ONE_MINUTE) {
-      previousMillis = currentMillis;
+  }
 
-      char buffer[10];
-      sprintf(buffer, "CPM: %d", cpm_counter);
+  if (currentMillis - previousMillis > ONE_MINUTE) {
+    previousMillis = currentMillis;
 
-      lcd.setCursor(0, 1);
-      lcd.print("uSv/h: ");
-      lcd.print(cpm_counter * cpm_constant, 6);
-      lcd.setCursor(0, 2);
-      lcd.print(buffer);
+    char buffer[10];
+    sprintf(buffer, "CPM: %d", impulse_counter);
+    
+    lcd.setCursor(2, 1);
+    lcd.print(buffer);
+    lcd.setCursor(0, 2);
+    lcd.print("uSv/h:  ");
+    lcd.print(impulse_counter * cpm_constant, 4);
 
-      countdownFinished = false;
-      countdownMillis = millis() + ONE_MINUTE;
-      cpm_counter = 0;
-    }
+
+    countdownFinished = false;
+    countdownMillis = millis() + ONE_MINUTE;
+    impulse_counter = 0;
   }
 }
