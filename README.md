@@ -1,5 +1,6 @@
 # **geiger-counter**
 This project uses a RadiationD cajoe v1.1 and gives it additional functionality and a simple casing that holds everything together.
+![preview of an assembled device](https://user-images.githubusercontent.com/100175489/219098865-91a9ec75-2e5d-4c4d-bffb-7e703eaa1daa.jpg)
 
 #### **Things needed:**  
 1x assembled RadiationD v1.1 Cajoe (for example look for "diy geiger" on the bay)  
