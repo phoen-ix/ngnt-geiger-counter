@@ -40,3 +40,9 @@ VIN -> D6(GPIO12)
 
 - use M3 spacer, screws and nuts to mount the front plate on the back plate  
 - Flash Wemos D1 R2  
+
+
+
+#### **ToBeDone**  
+- create a new frontplate with fitting for two switches, one that controls the backlight of the lcd and one that can switch off the speaker (I recommend if you assemble the RadiationD to leave out the speaker for now)
+- create network capability & save data; open to suggestions but my current plan is to create an mqtt broker that saves the cpm in a database (all dockerized)
