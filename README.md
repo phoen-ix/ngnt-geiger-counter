@@ -22,7 +22,7 @@ screws:
 - mount the LCD to the front plate (4x M3x12mm & nuts)  
 - remove the 4 screws on the RadiationD that hold the acryl, mount everything to the front plate (4x M3x8mm)  
 
-###### **Connect Dupont-cables:**  
+- Connect Dupont-cables:  
 
 ###### **LCD -> Wemos R1 D2**  
 GND -> GND  
