@@ -1,5 +1,5 @@
 # **geiger-counter**
-This project uses a RadiationD cajoe v1.1 and gives it additional functionality and a simple casing that holds everything together.  
+This project uses a RadiationD v1.1 cajoe and gives it additional functionality and a simple casing that holds everything together.  
 ![preview of an assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
 
@@ -25,14 +25,14 @@ screws:
 
 - Connect Dupont-cables:  
 
-###### **LCD -> Wemos R1 D2**  
+###### **LCD -> Wemos D1 R2**  
 GND -> GND  
 VCC -> 3.3V  
 SDA -> SDA/D2  
 SCL -> SCL/D1  
 
 
-###### **RadiationD Cajoe V1.1 -> Wemos R1 D2**  
+###### **RadiationD Cajoe V1.1 -> Wemos D1 R2**  
 GND -> GND  
 5V  -> 5V  
 VIN -> D6(GPIO12)  
