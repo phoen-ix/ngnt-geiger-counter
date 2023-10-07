@@ -1,4 +1,4 @@
-# **ngnt-geiger-counter**
+# **not great, not terrible - geiger-counter**
 This project uses a RadiationD v1.1 cajoe and gives it additional functionality and a simple casing that holds everything together.  
 ![preview of an assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
