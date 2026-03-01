@@ -46,15 +46,20 @@ BEGIN
   -- RANGE COLUMNS stores the datetime boundary as a datetime string in
   -- PARTITION_DESCRIPTION (e.g. '2026-04-01 00:00:00'); CAST … AS DATE handles that.
   -- Falls back to the first day of the current quarter for a fresh table.
+  -- The subquery filters out p_future (MAXVALUE) before CAST, avoiding a
+  -- '0000-00-00' error under strict SQL mode.
   SELECT COALESCE(
-    MAX(CAST(PARTITION_DESCRIPTION AS DATE)),
+    MAX(CAST(pd AS DATE)),
     MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 1) QUARTER
   )
   INTO v_max_date
-  FROM information_schema.PARTITIONS
-  WHERE TABLE_SCHEMA = DATABASE()
-    AND TABLE_NAME   = 'measurements'
-    AND PARTITION_NAME != 'p_future';
+  FROM (
+    SELECT PARTITION_DESCRIPTION AS pd
+    FROM information_schema.PARTITIONS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'measurements'
+      AND PARTITION_NAME != 'p_future'
+  ) filtered;
 
   -- Keep adding quarterly partitions until we have at least 2 years of headroom.
   WHILE v_max_date < DATE_ADD(CURDATE(), INTERVAL 2 YEAR) DO
