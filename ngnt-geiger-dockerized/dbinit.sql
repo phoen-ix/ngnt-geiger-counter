@@ -48,7 +48,9 @@ BEGIN
   -- PARTITION_DESCRIPTION (e.g. '2026-04-01 00:00:00').  We take MAX() on
   -- the raw string (ISO dates sort correctly) to avoid CAST per row, which
   -- triggers a '0000-00-00' error under strict SQL mode in MariaDB 11.4.
-  SELECT MAX(PARTITION_DESCRIPTION) INTO v_max_str
+  -- RANGE COLUMNS descriptions include embedded quotes (e.g. '2028-04-01 …')
+  -- so we strip them before comparison / conversion.
+  SELECT MAX(REPLACE(PARTITION_DESCRIPTION, '''', '')) INTO v_max_str
   FROM information_schema.PARTITIONS
   WHERE TABLE_SCHEMA = DATABASE()
     AND TABLE_NAME   = 'measurements'
