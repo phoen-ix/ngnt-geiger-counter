@@ -124,6 +124,7 @@ Settings are saved to `/config.json` on the device flash and reloaded on every b
 
 - On boot, if no WiFi credentials are saved, it opens an access point (`GeigerCounter` / `wifiApPass`) and serves a captive portal to configure the network. Credentials are stored in flash and reused on subsequent boots.
 - After connecting, it synchronises time via NTP (ezTime) and connects to the MQTT broker.
+- If MQTT connection fails after 12 attempts, the device opens the config portal again (AP mode) so you can correct server/credential settings without re-flashing.
 - An interrupt on GPIO 12 increments a counter on every falling edge from the Geiger-Müller tube.
 - Every 60 seconds it publishes a JSON measurement to `/geiger00/impulses`, resets the counter, and updates the LCD.
 

@@ -159,7 +159,7 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - **Auto-provisioning:** If the "MQTT Pepper" field is set in the WiFiManager portal and the MQTT User/Password are left at their compile-time defaults (`geiger00`/`geiger00PW`), the firmware derives unique credentials from the device's MAC address + pepper using HMAC-SHA256. Derived credentials are never saved to flash — they're computed fresh on every boot.
 - `mqttUser` doubles as the MQTT client ID, the username, and the MQTT topic prefix.
 - `keepAlive` is set to 1200 s (20 min) — intentionally long because the device only publishes once per minute and we don't want reconnect churn.
-- After 12 failed MQTT reconnect attempts, the ESP restarts itself (`ESP.restart()`).
+- After 12 failed MQTT reconnect attempts, the device opens the WiFiManager config portal (AP mode) so the user can correct settings — it no longer blindly restarts.
 - The `events()` call at the bottom of `loop()` is required by the ezTime library for periodic NTP re-sync.
 - `showCountdown` is set to `false` — the LCD does not show the 60 s countdown by default. Set to `true` to re-enable.
 
