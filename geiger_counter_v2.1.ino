@@ -263,68 +263,34 @@ void reconnect() {
       }
 
       if (retryCounter > connectionAttempts) {
-        USE_SERIAL.println("MQTT failed — opening config portal");
         retryCounter = 0;
 
+        // Get MAC for display
+        uint8_t mac[6];
+        WiFi.macAddress(mac);
+        char macStr[18];
+        snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+        // Serial output
+        USE_SERIAL.println("MQTT failed — device info for registration:");
+        USE_SERIAL.printf("  MAC:    %s\n", macStr);
+        USE_SERIAL.printf("  User:   %s\n", cfgMqttUser);
+        USE_SERIAL.printf("  Pepper: %s\n", cfgMqttPepper);
+
+        // LCD: 4 rows × 20 cols
         lcd.clear();
-        lcd.setCursor(1, 0);
-        lcd.print("MQTT connect failed");
-        lcd.setCursor(4, 1);
-        lcd.print("AccessPoint:");
-        lcd.setCursor(0, 2);
-        lcd.print("Name " + deviceHostname);
-        lcd.setCursor(0, 3);
-        lcd.print("Pass " + wifiApPass);
+        lcdPrintLine(0, "MQTT connect failed");
+        lcdPrintLine(1, macStr);
+        char idLine[21];
+        snprintf(idLine, sizeof(idLine), "ID %.17s", cfgMqttUser);
+        lcdPrintLine(2, idLine);
+        char pepperLine[21];
+        snprintf(pepperLine, sizeof(pepperLine), "%.20s", cfgMqttPepper);
+        lcdPrintLine(3, pepperLine);
 
-        WiFiManagerParameter wm_server("mqtt_server", "MQTT Server",   cfgMqttServer, 64);
-        WiFiManagerParameter wm_port  ("mqtt_port",   "MQTT Port",     cfgMqttPort,    6);
-        WiFiManagerParameter wm_user  ("mqtt_user",   "MQTT User",     cfgMqttUser,   32);
-        WiFiManagerParameter wm_pw    ("mqtt_userpw", "MQTT Password", cfgMqttUserPw, 64, " type='password'");
-        WiFiManagerParameter wm_pepper("mqtt_pepper", "MQTT Pepper",   cfgMqttPepper, 64, " type='password'");
-        WiFiManagerParameter wm_tz    ("timezone",    "Timezone",      cfgTimezone,   40);
-        WiFiManagerParameter wm_cpm  ("cpm_factor",  "CPM Factor (uSv/h)", cfgCpmFactor, 10);
-        WiFiManagerParameter wm_dt   ("dead_time",   "Dead time (us)",     cfgDeadTime,   6);
-
-        WiFiManager wifiManager;
-        wifiManager.setSaveConfigCallback(saveConfigCallback);
-        wifiManager.addParameter(&wm_server);
-        wifiManager.addParameter(&wm_port);
-        wifiManager.addParameter(&wm_user);
-        wifiManager.addParameter(&wm_pw);
-        wifiManager.addParameter(&wm_pepper);
-        wifiManager.addParameter(&wm_tz);
-        wifiManager.addParameter(&wm_cpm);
-        wifiManager.addParameter(&wm_dt);
-        wifiManager.setClass("invert");
-        wifiManager.setHostname(deviceHostname.c_str());
-        wifiManager.startConfigPortal(deviceHostname.c_str(), wifiApPass.c_str());
-
-        strlcpy(cfgMqttServer, wm_server.getValue(), sizeof(cfgMqttServer));
-        strlcpy(cfgMqttPort,   wm_port.getValue(),   sizeof(cfgMqttPort));
-        strlcpy(cfgMqttUser,   wm_user.getValue(),   sizeof(cfgMqttUser));
-        strlcpy(cfgMqttUserPw, wm_pw.getValue(),     sizeof(cfgMqttUserPw));
-        strlcpy(cfgMqttPepper, wm_pepper.getValue(), sizeof(cfgMqttPepper));
-        strlcpy(cfgTimezone,   wm_tz.getValue(),      sizeof(cfgTimezone));
-        strlcpy(cfgCpmFactor,  wm_cpm.getValue(),     sizeof(cfgCpmFactor));
-        {
-          float p = atof(cfgCpmFactor);
-          if (p > 0) cpmConstant = p;
-        }
-        strlcpy(cfgDeadTime, wm_dt.getValue(), sizeof(cfgDeadTime));
-        {
-          unsigned long dt = strtoul(cfgDeadTime, NULL, 10);
-          if (dt > 0 && dt <= 10000) deadTimeMicros = dt;
-        }
-
-        if (shouldSaveConfig) {
-          saveConfig();
-          shouldSaveConfig = false;
-        }
-
-        deriveMqttCredentials();
-        buildMqttStrings();
-        client.setServer(cfgMqttServer, validPort(cfgMqttPort));
-        continue;
+        delay(120000);  // 2 minutes
+        continue;       // retry MQTT
       }
 
       char attLine[21];
@@ -369,6 +335,15 @@ void setup() {
 
   // Load saved MQTT config from flash (fills cfgMqtt* with stored values)
   loadConfig();
+
+  // Auto-generate pepper if none was configured (8 random hex chars via HW RNG)
+  if (strlen(cfgMqttPepper) == 0) {
+    uint32_t rnd = ESP.random();
+    snprintf(cfgMqttPepper, sizeof(cfgMqttPepper), "%08lx", (unsigned long)rnd);
+    USE_SERIAL.printf("Auto-generated pepper: %s\n", cfgMqttPepper);
+    saveConfig();
+  }
+
   buildMqttStrings();
 
   // WiFiManager custom parameters — pre-filled with values from flash
