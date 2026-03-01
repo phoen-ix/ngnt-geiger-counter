@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (clock-aligned measurements, LCD status overhaul)
+Last updated: 2026-03-01 (LCD 1 Hz throttle, pending MQTT flush on reconnect, reduced heap allocs)
 
 ---
 
@@ -165,8 +165,10 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - The ISR (`impulse()`) increments the counter with a configurable dead-time debounce (default 200 µs). This filters signal bounce/ringing on the GPIO pin without losing real pulses.
 - `impulseCounter` is snapshot with `noInterrupts()`/`interrupts()` before use, avoiding race conditions between the ISR and the main loop (consistent CPM/uSv/h values and no lost pulses on reset).
 - **Clock-aligned measurements:** After NTP sync, the firmware waits for the next :00 second boundary before starting its first measurement window. This ensures every published reading covers an exact wall-clock minute. Timing uses `Geiger.minute()` (NTP-derived) instead of `millis()`, so there is no drift. The LCD shows a live countdown during the wait ("Waiting for :00") and during normal operation ("Next reading").
-- **Staggered MQTT publish:** The MQTT message is built at the :00 boundary (capturing the correct timestamp), but the actual publish is delayed by a random 1–57 s offset chosen fresh each cycle. This spreads broker load when multiple devices report simultaneously. The LCD updates immediately with the new reading; only the network send is deferred.
-- The MQTT JSON message is built with `snprintf` into a stack buffer instead of `String` concatenation, avoiding heap fragmentation on the ESP8266.
+- **Staggered MQTT publish:** The MQTT message is built at the :00 boundary (capturing the correct timestamp), but the actual publish is delayed by a random 1–57 s offset chosen fresh each cycle. This spreads broker load when multiple devices report simultaneously. The LCD updates immediately with the new reading; only the network send is deferred. If the MQTT connection drops while a publish is pending, the reading is flushed immediately after `reconnect()` succeeds — no data loss on transient disconnections.
+- The MQTT JSON message is built with `snprintf` into a 192-byte stack buffer (`pendingMqttBuf`) instead of `String` concatenation, avoiding heap fragmentation on the ESP8266. The buffer is sized to accommodate long MQTT usernames (up to 31 chars) plus JSON overhead.
+- **LCD 1 Hz throttle:** All LCD row writes are gated behind a `millis()` check (`lastLcdUpdate`) so the display refreshes once per second instead of every loop iteration. This eliminates thousands of redundant I²C transactions per second. The minute-transition block (counter snapshot, MQTT message build, `lcd.clear()` on state change) remains outside the gate for immediate execution. After an `lcd.clear()`, `lastLcdUpdate` is reset to 0 to force an immediate repaint.
+- **Reduced String allocations:** The two `const String` date/time format variables (`dateOrder`, `timestampOrder`) were replaced with a single `const char* lcdDateTimeFmt` and a single `dateTime()` call per LCD update. Combined with the 1 Hz throttle, this reduces heap String allocations from thousands/sec to 1/sec.
 - The device is publish-only — there is no MQTT subscribe or callback.
 - **LCD states:** The 20×4 display shows contextual information for every phase: "Initializing..." during boot, "Syncing time..." during NTP sync, "Waiting for :00" with a countdown after NTP until the first wall-clock minute boundary, "Next reading" countdown during the first measurement cycle, then live date/time and CPM/uSv/h values during normal operation (the countdown is hidden once readings are available). Connection errors show the error code, server address, and retry attempt count. After 12 failed MQTT attempts, the AP portal screen is shown.
 

@@ -49,7 +49,8 @@ unsigned long lastCpm  = 0;
 bool hasReading        = false;
 int  publishAtSecond   = 0;
 bool publishPending    = false;
-char pendingMqttBuf[128];
+unsigned long lastLcdUpdate = 0;
+char pendingMqttBuf[192];
 
 // ── Device identity (not user-configurable via portal) ───────────────────
 const String deviceHostname = "GeigerCounter";
@@ -73,8 +74,7 @@ String mqttConnectedMessage;
 
 // ── Localisation ─────────────────────────────────────────────────────────
 char cfgTimezone[40] = "Europe/Vienna";
-const String dateOrder      = "d.m.y";
-const String timestampOrder = "H:i:s";
+const char* lcdDateTimeFmt  = "d.m.y    H:i:s";
 
 
 // ── Config helpers ────────────────────────────────────────────────────────
@@ -343,6 +343,12 @@ void reconnect() {
 
   retryCounter = 0;
   lcd.clear();
+
+  if (publishPending) {
+    client.publish(mqttTopic.c_str(), pendingMqttBuf);
+    publishPending = false;
+    USE_SERIAL.println("MQTT published (after reconnect)");
+  }
 }
 
 
@@ -468,13 +474,6 @@ void loop() {
   int remaining     = 60 - currentSecond;
   if (remaining == 60) remaining = 0;
 
-  // Row 0: live date + time (always)
-  char row0[21];
-  snprintf(row0, sizeof(row0), "%s    %s",
-           Geiger.dateTime(dateOrder).c_str(),
-           Geiger.dateTime(timestampOrder).c_str());
-  lcdPrintLine(0, row0);
-
   // Minute transition
   if (currentMinute != lastPublishMinute) {
     if (!measuring) {
@@ -484,8 +483,7 @@ void loop() {
       interrupts();
       measuring = true;
       lcd.clear();
-      // Reprint row 0 after clear
-      lcdPrintLine(0, row0);
+      lastLcdUpdate = 0; // force immediate LCD refresh after clear
       USE_SERIAL.println("Clock aligned — measuring started");
     } else {
       // Subsequent transitions: snapshot the completed minute
@@ -517,30 +515,41 @@ void loop() {
     USE_SERIAL.println("MQTT published");
   }
 
-  // Row 1: countdown (only while waiting for alignment or first reading)
-  if (!measuring) {
-    char row1[21];
-    snprintf(row1, sizeof(row1), " Waiting for :00 %2ds", remaining);
-    lcdPrintLine(1, row1);
-  } else if (!hasReading) {
-    char row1[21];
-    snprintf(row1, sizeof(row1), "  Next reading %3ds", remaining);
-    lcdPrintLine(1, row1);
-  } else {
-    lcdPrintLine(1, "");
-  }
+  // LCD update — throttled to 1 Hz
+  if (millis() - lastLcdUpdate >= 1000) {
+    lastLcdUpdate = millis();
 
-  // Rows 2-3: last measurement (redrawn every loop so lcd.clear() can't wipe them)
-  if (hasReading) {
-    char row2[21];
-    snprintf(row2, sizeof(row2), "     CPM: %lu", lastCpm);
-    lcdPrintLine(2, row2);
+    // Row 0: live date + time
+    char row0[21];
+    snprintf(row0, sizeof(row0), "%-20s",
+             Geiger.dateTime(lcdDateTimeFmt).c_str());
+    lcdPrintLine(0, row0);
 
-    char row3[21];
-    char usvStr[10];
-    dtostrf(lastCpm * cpmConstant, 1, 4, usvStr);
-    snprintf(row3, sizeof(row3), "  uSv/h: %s", usvStr);
-    lcdPrintLine(3, row3);
+    // Row 1: countdown (only while waiting for alignment or first reading)
+    if (!measuring) {
+      char row1[21];
+      snprintf(row1, sizeof(row1), " Waiting for :00 %2ds", remaining);
+      lcdPrintLine(1, row1);
+    } else if (!hasReading) {
+      char row1[21];
+      snprintf(row1, sizeof(row1), "  Next reading %3ds", remaining);
+      lcdPrintLine(1, row1);
+    } else {
+      lcdPrintLine(1, "");
+    }
+
+    // Rows 2-3: last measurement
+    if (hasReading) {
+      char row2[21];
+      snprintf(row2, sizeof(row2), "     CPM: %lu", lastCpm);
+      lcdPrintLine(2, row2);
+
+      char row3[21];
+      char usvStr[10];
+      dtostrf(lastCpm * cpmConstant, 1, 4, usvStr);
+      snprintf(row3, sizeof(row3), "  uSv/h: %s", usvStr);
+      lcdPrintLine(3, row3);
+    }
   }
 
   events(); // required by ezTime for periodic NTP re-sync
