@@ -2,7 +2,7 @@
 
 A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case.
 
-**v3.2** — MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
+**v3.3** — Firmware v2.2: auto-generated pepper, info screen replaces reconnect portal. MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -12,7 +12,7 @@ A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 
 
 ```
 ngnt-geiger-counter/
-├── geiger_counter_v2.1.ino          # ESP8266 firmware (Wemos D1 R2)
+├── geiger_counter_v2.2.ino          # ESP8266 firmware (Wemos D1 R2)
 └── ngnt-geiger-dockerized/
     ├── app/                         # Flask web application
     │   ├── app.py                   # Routes, admin bootstrap
@@ -86,7 +86,7 @@ ngnt-geiger-counter/
 
 ---
 
-## Firmware — `geiger_counter_v2.1.ino`
+## Firmware — `geiger_counter_v2.2.ino`
 
 ### Required Arduino libraries
 
@@ -120,16 +120,17 @@ const char* lcdDateTimeFmt  = "d.m.y    H:i:s"; // date+time format on the LCD
 | MQTT Port | `8883` | TLS port; `MOSQUITTO_PORTS_TLS` in `.env` |
 | MQTT User | `geiger00` | leave at default for auto-provisioning |
 | MQTT Password | `geiger00PW` | leave at default for auto-provisioning |
-| MQTT Pepper | *(empty)* | must match your user's pepper in the web UI |
+| MQTT Pepper | *(auto-generated)* | auto-generated on first boot if empty; must match your user's pepper in the web UI |
 | Timezone | `Europe/Vienna` | [tz database name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) |
 | CPM Factor (uSv/h) | `0.0057` | Conversion constant for your GM tube |
 | Dead time (us) | `200` | ISR debounce (200 for SBM-20, 50-90 for J305) |
 
 ### What the firmware does
 
-- On boot, if no WiFi credentials are saved, it opens an access point (`GeigerCounter` / `wifiApPass`) and serves a captive portal.
+- On first boot, if no pepper is configured, the firmware auto-generates one (8 random hex chars via hardware RNG) and saves it to flash.
+- If no WiFi credentials are saved, it opens an access point (`GeigerCounter` / `wifiApPass`) and serves a captive portal. The pepper field is pre-filled with the auto-generated value.
 - After connecting, it synchronises time via NTP and connects to the MQTT broker.
-- If MQTT connection fails after 12 attempts, the device opens the config portal again.
+- If MQTT connection fails after 12 attempts, the LCD displays the device's MAC address, MQTT user ID, and pepper for 2 minutes (use these to register the device in the web UI), then retries.
 - Every 60 seconds it publishes a JSON measurement to `/<device_id>/impulses`, clock-aligned to wall-clock minutes.
 
 **MQTT message format** (published every 60 s):
@@ -143,12 +144,12 @@ const char* lcdDateTimeFmt  = "d.m.y    H:i:s"; // date+time format on the LCD
 
 v3.0 replaces the manual `add-device.sh` script with web-based provisioning:
 
-1. Create a user account on the web dashboard
-2. In **Account** settings, set your MQTT pepper (any string)
-3. Flash the device and enter the same pepper in the WiFiManager portal
-4. In **Devices**, enter your device's WiFi MAC address
+1. Flash the device — on first boot it auto-generates a pepper and shows it on the LCD / serial
+2. Create a user account on the web dashboard
+3. In **Account** settings, set your MQTT pepper to the value shown on the device
+4. In **Devices**, enter your device's WiFi MAC address (also shown on the LCD after 12 failed MQTT attempts)
 5. The server derives the same MQTT credentials as the firmware and provisions them to Mosquitto automatically (within 5 seconds)
-6. The device connects on next boot
+6. The device connects on next retry cycle
 
 **How it works:** Both firmware and server compute `username = geiger_<last 6 hex of MAC>` and `password = HMAC-SHA256(pepper, mac)[:16]`. The pepper is stored per-user, so different users can have different peppers.
 

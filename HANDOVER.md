@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (v3.2 — MQTT over TLS)
+Last updated: 2026-03-01 (v3.3 — firmware v2.2: auto-generated pepper, info screen)
 
 ---
 
@@ -19,7 +19,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Area | Status | Notes |
 |------|--------|-------|
 | Hardware design | Done | Published on Printables, no planned changes |
-| Firmware v2.1 (`.ino`) | Done | WiFi, MQTT over TLS (`setInsecure`), NTP, JSON payload |
+| Firmware v2.2 (`.ino`) | Done | WiFi, MQTT over TLS, auto-generated pepper, info screen on MQTT failure |
 | MQTT broker (Mosquitto) | Done | Auth, ACL, TLS (self-signed, auto-generated), Docker, entrypoint with reload watcher |
 | DB schema (`dbinit.sql`) | Done | `users`, `devices`, `password_resets`, `measurements`, `settings` |
 | Python subscriber (`mqtt_bro_impulses.py`) | Done | UPDATE-only device status (devices must be pre-registered) |
@@ -191,11 +191,14 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 
 ## File-by-file notes
 
-### `geiger_counter_v2.1.ino`
+### `geiger_counter_v2.2.ino`
 
+Changed in v3.3: auto-generates pepper on first boot; reconnect portal replaced with LCD info screen.
 Changed in v3.2: uses `WiFiClientSecure` + `setInsecure()` for MQTT over TLS; default port changed from 2883 to 8883.
 
 Key points:
+- **Auto-generated pepper** (v3.3) — On first boot (or after flash erase), if `cfgMqttPepper` is empty, the firmware generates 8 random hex chars using `ESP.random()` (hardware RNG) and saves to flash. The WiFiManager portal's pepper field is pre-filled with this value.
+- **Info screen on MQTT failure** (v3.3) — After 12 failed MQTT connection attempts, instead of opening a WiFiManager config portal, the LCD displays the device's MAC address, MQTT user ID, and pepper for 2 minutes, then retries. The user can use these values to register the device in the web UI.
 - `WiFiClientSecure::setInsecure()` — encrypts the wire but does not verify the server certificate. Prevents passive eavesdropping; does not prevent active MITM. Acceptable for home WiFi.
 - If pepper is set and MQTT User/Password are at defaults, the firmware derives credentials from MAC + pepper using HMAC-SHA256.
 - The derived `device_id` format is `geiger_<last 6 hex of MAC>`.
