@@ -99,7 +99,10 @@ bootstrap_admin_with_retry()
 def utc_to_local(utc_str: str, tz_name: str) -> str:
     from zoneinfo import ZoneInfo
     dt = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-    local = dt.astimezone(ZoneInfo(tz_name))
+    try:
+        local = dt.astimezone(ZoneInfo(tz_name))
+    except (KeyError, Exception):
+        local = dt  # fall back to UTC on invalid timezone
     return local.strftime('%Y-%m-%d %H:%M:%S')
 
 
@@ -161,6 +164,8 @@ def register():
             flash('Username and password are required.', 'error')
         elif len(username) < 3 or len(username) > 50:
             flash('Username must be 3-50 characters.', 'error')
+        elif not re.match(r'^[a-zA-Z0-9_-]+$', username):
+            flash('Username may only contain letters, digits, underscores, and hyphens.', 'error')
         elif len(password) < 6:
             flash('Password must be at least 6 characters.', 'error')
         elif password != password2:

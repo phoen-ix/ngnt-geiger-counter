@@ -139,7 +139,7 @@
                 <td>
                     {% if u['id'] != session['user_id'] %}
                     <form method="post" style="display:inline;"
-                          onsubmit="return confirm('Delete user {{ u['username'] }}? All their devices will be unprovisioned.');">
+                          onsubmit="return confirm('Delete user ' + {{ u['username']|tojson }} + '? All their devices will be unprovisioned.');">
                         <input type="hidden" name="action" value="delete_user">
                         <input type="hidden" name="target_user_id" value="{{ u['id'] }}">
                         <button type="submit" class="btn-sm btn-danger">Delete</button>
