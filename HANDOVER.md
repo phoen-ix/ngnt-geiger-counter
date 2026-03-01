@@ -165,7 +165,7 @@ Unchanged from v2.0. Partitioned by `RANGE COLUMNS(measured_at)` with quarterly 
 
 ### `settings` table
 
-Key-value store. v3 adds SMTP fields and `site_name`:
+Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), not stored here.
 
 | Key | Default | Used by |
 |-----|---------|---------|
@@ -173,13 +173,13 @@ Key-value store. v3 adds SMTP fields and `site_name`:
 | `offline_timeout_minutes` | `5` | Dashboard offline detection |
 | `default_cpm_factor` | `0.0057` | Admin page placeholder |
 | `default_alert_threshold` | `0.5` | Dashboard dose rate card |
+| `base_url` | *(empty)* | Password reset email links |
 | `smtp_host` | *(empty)* | Password reset email |
 | `smtp_port` | `587` | Password reset email |
 | `smtp_user` | *(empty)* | Password reset email |
 | `smtp_password` | *(empty)* | Password reset email |
 | `smtp_from` | *(empty)* | Password reset email |
 | `smtp_tls` | `1` | Password reset email |
-| `site_name` | `NGNT Geiger Counter` | Page titles, nav |
 
 ---
 
@@ -235,7 +235,7 @@ Single-file Flask app with all routes. Key components:
 - `login_required`, `admin_required`: decorators checking `session['user_id']` / `session['role']`
 - `derive_mqtt_credentials(mac, pepper)`: HMAC-SHA256 credential derivation matching firmware
 - `provision_device()` / `unprovision_device()`: manage `devices.conf` with file locking (`fcntl.flock`) and `.reload` flag
-- `send_password_reset_email()`: SMTP using settings from DB
+- `send_password_reset_email()`: SMTP using settings from DB; `base_url` from DB settings, `site_name` from `SITE_NAME` env var
 
 ### `app/templates/`
 
@@ -245,7 +245,7 @@ Single-file Flask app with all routes. Key components:
 - `dashboard.html` — range bar, device dropdown, cards, Chart.js chart, measurements table
 - `devices.html` — device list + add form
 - `account.html` — profile + change password
-- `admin.html` — global settings, SMTP settings, user management table
+- `admin.html` — global settings (incl. base URL), SMTP settings, user management table
 
 ### `app/static/style.css`
 
@@ -283,6 +283,7 @@ Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 |--------|----------|-------|
 | Server-side credentials | `.env` (gitignored) | Template in `.env.example` |
 | Flask secret key | `.env` (`FLASK_SECRET_KEY`) | Used for session signing |
+| Site name | `.env` (`SITE_NAME`) | Page titles, nav bar, email subjects |
 | Initial admin password | stdout + `data/admin_initial_password.txt` | Deleted on password change |
 | MQTT pepper | Per-user in DB (`users.pepper`) + device portal | Same value on both sides |
 | Device MQTT passwords | `config/mosquitto/devices.conf` (gitignored) + DB | Managed by Flask provisioning |

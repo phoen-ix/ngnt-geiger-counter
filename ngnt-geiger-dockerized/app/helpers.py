@@ -126,9 +126,12 @@ def send_password_reset_email(email: str, token: str, settings: dict) -> bool:
     smtp_password = settings.get('smtp_password', '')
     smtp_from = settings.get('smtp_from', smtp_user)
     smtp_tls = settings.get('smtp_tls', '1') == '1'
-    site_name = settings.get('site_name', 'NGNT Geiger Counter')
+    site_name = os.environ.get('SITE_NAME', 'NGNT Geiger Counter')
 
-    reset_url = f'{os.environ.get("FLASK_BASE_URL", "http://localhost:8000")}/reset-password/{token}'
+    base_url = settings.get('base_url', '').rstrip('/')
+    if not base_url:
+        base_url = 'http://localhost:8000'
+    reset_url = f'{base_url}/reset-password/{token}'
 
     body = (
         f'You requested a password reset for your {site_name} account.\n\n'

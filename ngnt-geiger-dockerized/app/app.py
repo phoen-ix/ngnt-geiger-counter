@@ -18,15 +18,12 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-me')
 
 # ── Template context ─────────────────────────────────────────────────────────
 
+SITE_NAME = os.environ.get('SITE_NAME', 'NGNT Geiger Counter')
+
+
 @app.context_processor
 def inject_site_name():
-    try:
-        db = get_db()
-        settings = get_settings(db)
-        db.close()
-        return {'site_name': settings.get('site_name', 'NGNT Geiger Counter')}
-    except Exception:
-        return {'site_name': 'NGNT Geiger Counter'}
+    return {'site_name': SITE_NAME}
 
 
 # ── Admin bootstrap ─────────────────────────────────────────────────────────
@@ -86,7 +83,9 @@ def is_device_online(device: dict, offline_timeout: int) -> bool:
         return False
     if isinstance(last_seen, str):
         last_seen = datetime.strptime(last_seen, '%Y-%m-%d %H:%M:%S')
-    age_min = (datetime.utcnow() - last_seen).total_seconds() / 60
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+    age_min = (datetime.now(timezone.utc) - last_seen).total_seconds() / 60
     return age_min <= offline_timeout
 
 
@@ -508,7 +507,7 @@ def account():
 # ── Admin ────────────────────────────────────────────────────────────────────
 
 SETTINGS_KEYS = [
-    'site_name', 'display_timezone', 'offline_timeout_minutes',
+    'base_url', 'display_timezone', 'offline_timeout_minutes',
     'default_cpm_factor', 'default_alert_threshold',
 ]
 SMTP_KEYS = [
@@ -526,20 +525,22 @@ def admin():
 
         if action == 'save_settings':
             with db.cursor() as cur:
-                stmt = "UPDATE settings SET `value` = %s WHERE `key` = %s"
+                stmt = ("INSERT INTO settings (`key`, `value`) VALUES (%s, %s) "
+                        "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
                 for key in SETTINGS_KEYS:
                     val = request.form.get(key)
                     if val is not None:
-                        cur.execute(stmt, (val.strip(), key))
+                        cur.execute(stmt, (key, val.strip()))
             flash('Settings saved.', 'success')
 
         elif action == 'save_smtp':
             with db.cursor() as cur:
-                stmt = "UPDATE settings SET `value` = %s WHERE `key` = %s"
+                stmt = ("INSERT INTO settings (`key`, `value`) VALUES (%s, %s) "
+                        "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
                 for key in SMTP_KEYS:
                     val = request.form.get(key)
                     if val is not None:
-                        cur.execute(stmt, (val.strip(), key))
+                        cur.execute(stmt, (key, val.strip()))
             flash('SMTP settings saved.', 'success')
 
         elif action == 'toggle_role':

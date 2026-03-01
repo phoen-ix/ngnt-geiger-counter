@@ -12,6 +12,7 @@ services:
             MARIADB_PASSWORD: ${MARIADB_PASSWORD}
             MARIADB_DATABASE: ${MARIADB_DATABASE}
             FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
+            SITE_NAME: ${SITE_NAME:-NGNT Geiger Counter}
             MOSQUITTO_CONFIG_DIR: /app/mosquitto-config
         volumes:
             - ./app:/app

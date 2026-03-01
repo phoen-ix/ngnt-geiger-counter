@@ -9,9 +9,10 @@
     <form method="post">
         <input type="hidden" name="action" value="save_settings">
         <div class="form-row">
-            <label for="s-name">Site Name</label>
-            <input type="text" id="s-name" name="site_name"
-                   value="{{ settings.get('site_name', 'NGNT Geiger Counter') }}">
+            <label for="s-url">Base URL</label>
+            <input type="text" id="s-url" name="base_url"
+                   value="{{ settings.get('base_url', '') }}"
+                   placeholder="https://geiger.example.com">
         </div>
         <div class="form-row">
             <label for="s-tz">Display Timezone</label>

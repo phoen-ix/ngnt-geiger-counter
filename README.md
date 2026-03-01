@@ -183,7 +183,7 @@ git clone https://github.com/phoen-ix/ngnt-geiger-counter.git
 cd ngnt-geiger-counter/ngnt-geiger-dockerized
 
 cp .env.example .env
-# Edit .env — change all passwords and FLASK_SECRET_KEY before proceeding
+# Edit .env — change all passwords, FLASK_SECRET_KEY, and SITE_NAME before proceeding
 ```
 
 **2. Start the stack**
@@ -206,6 +206,7 @@ cat data/admin_initial_password.txt
 
 Navigate to `http://<your-server>:1880`, log in as `admin`, and:
 - Change the admin password (Account page) — this deletes `admin_initial_password.txt`
+- Set the **Base URL** (Admin > Global Settings) to your server's public URL (e.g. `https://geiger.example.com`) — used in password reset emails
 - Configure SMTP settings (Admin page) if you want password reset emails
 - Adjust global settings (timezone, alert thresholds, etc.)
 

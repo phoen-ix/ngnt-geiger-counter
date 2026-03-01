@@ -164,4 +164,4 @@ INSERT IGNORE INTO `settings` (`key`, `value`) VALUES
   ('smtp_password',           ''),
   ('smtp_from',               ''),
   ('smtp_tls',                '1'),
-  ('site_name',               'NGNT Geiger Counter');
+  ('base_url',                '');
