@@ -2,7 +2,7 @@
 
 A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case.
 
-**v3.1** — comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
+**v3.2** — MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -117,7 +117,7 @@ const char* lcdDateTimeFmt  = "d.m.y    H:i:s"; // date+time format on the LCD
 | Field | Default | Notes |
 |-------|---------|-------|
 | MQTT Server | `your.server.address` | your server's hostname or IP |
-| MQTT Port | `2883` | `MOSQUITTO_PORTS` in `.env` |
+| MQTT Port | `8883` | TLS port; `MOSQUITTO_PORTS_TLS` in `.env` |
 | MQTT User | `geiger00` | leave at default for auto-provisioning |
 | MQTT Password | `geiger00PW` | leave at default for auto-provisioning |
 | MQTT Pepper | *(empty)* | must match your user's pepper in the web UI |
@@ -160,14 +160,14 @@ Four Docker containers:
 
 ```
 Geiger counter
-     |  WiFi / MQTT
+     |  WiFi / MQTT (TLS, port 8883)
      v
 +-----------------+        +------------------+
 |   Mosquitto     |------->|  Python          |
 |  MQTT broker    |        |  subscriber      |
-|  :2883          |        +--------+---------+
-+-----------------+                 | INSERT
-                                    v
+|  :8883 (TLS)    |        +--------+---------+
+|  :2883 (plain)  |                 | INSERT
++-----------------+                 v
                            +------------------+
                            |    MariaDB       |
                            |  :3306 (internal)|
@@ -229,7 +229,7 @@ Create user accounts, set peppers, and register devices via the Devices page. Se
 
 ```bash
 docker compose down
-rm -rf volumes/mariadb/* volumes/mosquitto/data/* data/
+rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
 docker compose up -d
 ```
 
@@ -238,7 +238,7 @@ docker compose up -d
 | Container | Image / Dockerfile | Exposes | Role |
 |-----------|-------------------|---------|------|
 | `ngnt-geiger-mariadb` | `mariadb:11.4.10` | 3306 (internal) | Persistent storage |
-| `ngnt-geiger-mosquitto` | `eclipse-mosquitto:2.1.2-alpine` | 2883 -> 1883 | MQTT broker with auto-reload |
+| `ngnt-geiger-mosquitto` | `DockerfileMosquitto` (eclipse-mosquitto + openssl) | 8883 (TLS), 2883 -> 1883 (plain) | MQTT broker with TLS + auto-reload |
 | `ngnt-geiger-subscriber` | `DockerfileSubscriber` (Python 3.13-slim) | — | Async MQTT subscriber -> DB |
 | `ngnt-geiger-flask` | `DockerfileFlask` (Python 3.13-slim) | 1880 -> 8000 | Flask web dashboard + user management |
 
@@ -359,9 +359,13 @@ FLASK_TESTING=1 python -m pytest tests/ -v
 
 ---
 
+## Security notes
+
+- **MQTT TLS** — The firmware uses `WiFiClientSecure::setInsecure()` which encrypts traffic but does not verify the server certificate. This prevents passive eavesdropping of MQTT credentials over WiFi but does not protect against active man-in-the-middle attacks. Acceptable for a home network deployment.
+- The plain MQTT listener (port 2883 -> 1883) remains available for backward compatibility with un-updated devices and internal container-to-container traffic.
+
 ## Open / future ideas
 
 - Front plate revision: cutouts for two toggle switches (LCD backlight, speaker mute)
 - Web dashboard: CSV/JSON data export
-- MQTT over TLS (port 8883) for public-facing deployments
 - Grafana integration (MariaDB datasource)

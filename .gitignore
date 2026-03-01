@@ -17,6 +17,9 @@ ngnt-geiger-dockerized/volumes/mariadb/*
 ngnt-geiger-dockerized/volumes/mosquitto/data/*
 !ngnt-geiger-dockerized/volumes/mosquitto/data/.gitkeep
 
+ngnt-geiger-dockerized/volumes/mosquitto/certs/*
+!ngnt-geiger-dockerized/volumes/mosquitto/certs/.gitkeep
+
 
 # ── Log files ────────────────────────────────────────────────────────────────
 ngnt-geiger-dockerized/log/mosquitto/*.log

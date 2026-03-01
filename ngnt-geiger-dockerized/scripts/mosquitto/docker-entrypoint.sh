@@ -26,6 +26,40 @@ rebuild_passwd() {
 
 rebuild_passwd
 
+# ── Generate self-signed TLS certificates (once) ────────────────────────────
+CERT_DIR="/mosquitto/certs"
+if [ ! -f "$CERT_DIR/server.crt" ]; then
+    echo "[entrypoint] generating self-signed TLS certificates"
+    mkdir -p "$CERT_DIR"
+
+    # CA key + cert
+    openssl req -new -x509 -days 3650 -nodes \
+        -subj "/CN=NGNT Mosquitto CA" \
+        -keyout "$CERT_DIR/ca.key" \
+        -out    "$CERT_DIR/ca.crt" 2>/dev/null
+
+    # Server key + CSR
+    openssl req -new -nodes \
+        -subj "/CN=mosquitto" \
+        -keyout "$CERT_DIR/server.key" \
+        -out    "$CERT_DIR/server.csr" 2>/dev/null
+
+    # Sign with CA
+    openssl x509 -req -days 3650 \
+        -CA    "$CERT_DIR/ca.crt" \
+        -CAkey "$CERT_DIR/ca.key" \
+        -CAcreateserial \
+        -in    "$CERT_DIR/server.csr" \
+        -out   "$CERT_DIR/server.crt" 2>/dev/null
+
+    rm -f "$CERT_DIR/server.csr" "$CERT_DIR/ca.srl"
+    chown mosquitto:mosquitto "$CERT_DIR"/*.crt "$CERT_DIR"/*.key
+    chmod 600 "$CERT_DIR/server.key" "$CERT_DIR/ca.key"
+    echo "[entrypoint] TLS certificates created in $CERT_DIR"
+else
+    echo "[entrypoint] TLS certificates already exist — skipping generation"
+fi
+
 # Data and log dirs need mosquitto ownership for the daemon to write
 chown -R mosquitto:mosquitto /mosquitto/data /mosquitto/log 2>/dev/null || true
 

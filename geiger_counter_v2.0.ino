@@ -28,7 +28,7 @@
 #define USE_SERIAL Serial
 
 Timezone Geiger;
-WiFiClient espClient;
+WiFiClientSecure espClient;
 PubSubClient client(espClient);
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
@@ -60,7 +60,7 @@ const String wifiApPass     = "wifiApPass";
 // These are the compile-time defaults. Once the portal has been used and
 // saved, values are loaded from /config.json on every boot instead.
 char cfgMqttServer[64] = "your.server.address";
-char cfgMqttPort[6]    = "2883";
+char cfgMqttPort[6]    = "8883";
 char cfgMqttUser[32]   = "geiger00";
 char cfgMqttUserPw[64] = "geiger00PW";
 char cfgMqttPepper[64] = "";
@@ -440,6 +440,7 @@ void setup() {
   buildMqttStrings();
 
   client.setServer(cfgMqttServer, validPort(cfgMqttPort));
+  espClient.setInsecure();   // TLS without certificate verification
   client.setKeepAlive(1200);
 
   lcd.clear();

@@ -49,11 +49,14 @@ services:
                     - mariadb
 
     ngnt-geiger-mosquitto:
-        image: eclipse-mosquitto:${DOCKER_IMAGE_MOSQUITTO_TAG}
+        build:
+            context: .
+            dockerfile: ./Dockerfiles/DockerfileMosquitto
         container_name: ngnt-geiger-mosquitto
         restart: unless-stopped
         ports:
             - ${MOSQUITTO_PORTS}
+            - ${MOSQUITTO_PORTS_TLS}
         environment:
           MQTT_PYTHON_USER: ${MQTT_PYTHON_USER}
           MQTT_PYTHON_USERPW: ${MQTT_PYTHON_USERPW}
@@ -65,6 +68,7 @@ services:
             - ./config/mosquitto/conf.d/:/mosquitto/config/conf.d/:ro
             - ./log/mosquitto/:/mosquitto/log/
             - ./volumes/mosquitto/data:/mosquitto/data/
+            - ./volumes/mosquitto/certs:/mosquitto/certs
             - ./scripts/mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh:ro
 
         networks:

@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (v3.1 — comprehensive test suite)
+Last updated: 2026-03-01 (v3.2 — MQTT over TLS)
 
 ---
 
@@ -19,8 +19,8 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Area | Status | Notes |
 |------|--------|-------|
 | Hardware design | Done | Published on Printables, no planned changes |
-| Firmware v2 (`.ino`) | Done | WiFi, MQTT, NTP, JSON payload — unchanged in v3 |
-| MQTT broker (Mosquitto) | Done | Auth, ACL, Docker, entrypoint with background reload watcher |
+| Firmware v2 (`.ino`) | Done | WiFi, MQTT over TLS (`setInsecure`), NTP, JSON payload |
+| MQTT broker (Mosquitto) | Done | Auth, ACL, TLS (self-signed, auto-generated), Docker, entrypoint with reload watcher |
 | DB schema (`dbinit.sql`) | Done | `users`, `devices`, `password_resets`, `measurements`, `settings` |
 | Python subscriber (`mqtt_bro_impulses.py`) | Done | UPDATE-only device status (devices must be pre-registered) |
 | Flask dashboard (`app/app.py`) | Done | User accounts, device registration, visibility rules |
@@ -28,7 +28,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
 | Password reset | Done | Token-based, email via SMTP |
 | Test suite | Done | 98 pytest tests, mocked DB, no external deps |
-| MQTT over TLS | Not started | See future ideas |
+| MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain) |
 | Data export (CSV/JSON) | Not started | |
 | Grafana integration | Not started | |
 
@@ -44,7 +44,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 │  Geiger-Muller  ──▶  GPIO 12 interrupt  ──▶  I2C       │
 │  tube                                                   │
 └───────────────────────┬─────────────────────────────────┘
-                        │  WiFi → MQTT (port 2883)
+                        │  WiFi → MQTT over TLS (port 8883)
                         │  topic: /<device_id>/impulses
                         │  payload: JSON (see Data contract)
                         ▼
@@ -54,7 +54,8 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 │  ┌──────────────┐     ┌────────────────┐                │
 │  │  Mosquitto   │────▶│  Python        │                │
 │  │  172.18.1.30 │     │  subscriber    │                │
-│  │              │     │  172.18.1.40   │                │
+│  │  :8883 (TLS) │     │  172.18.1.40   │                │
+│  │  :1883 (int) │                                       │
 │  └──────────────┘     └───────┬────────┘                │
 │         ▲                     │ INSERT                  │
 │         │ .reload flag        ▼                         │
@@ -192,9 +193,10 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 
 ### `geiger_counter_v2.0.ino`
 
-Unchanged in v3.0.
+Changed in v3.2: uses `WiFiClientSecure` + `setInsecure()` for MQTT over TLS; default port changed from 2883 to 8883.
 
-Key points for v3 integration:
+Key points:
+- `WiFiClientSecure::setInsecure()` — encrypts the wire but does not verify the server certificate. Prevents passive eavesdropping; does not prevent active MITM. Acceptable for home WiFi.
 - If pepper is set and MQTT User/Password are at defaults, the firmware derives credentials from MAC + pepper using HMAC-SHA256.
 - The derived `device_id` format is `geiger_<last 6 hex of MAC>`.
 - The server's `helpers.py:derive_mqtt_credentials()` must produce identical results.
@@ -276,6 +278,7 @@ Changed from v2.0:
 Enhanced from v2.0:
 - Removed `MQTT_GEIGER_USER`/`MQTT_GEIGER_USERPW` provisioning (devices now come from `devices.conf` only)
 - `rebuild_passwd()` function truncates `passwd.txt` and rebuilds from scratch
+- **TLS cert generation** (v3.2): on first start, generates a self-signed CA + server certificate (RSA 2048, 10-year validity) in `/mosquitto/certs/`. Idempotent — skips if `server.crt` already exists. Certs persist via volume mount.
 - Starts Mosquitto as a background process (can't use `exec "$@"` because the watcher needs to run)
 - Background reload watcher: polls every 5 seconds for `.reload` flag, calls `rebuild_passwd()` + SIGHUP
 - Signal forwarding: traps SIGTERM/SIGINT and forwards to Mosquitto PID
@@ -283,6 +286,10 @@ Enhanced from v2.0:
 ### `Dockerfiles/DockerfileFlask`
 
 Python 3.13-slim + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker.
+
+### `Dockerfiles/DockerfileMosquitto`
+
+Added in v3.2. Extends `eclipse-mosquitto:2.1.2-alpine` with `openssl` (needed by entrypoint for cert generation).
 
 ### `Dockerfiles/DockerfileSubscriber`
 
@@ -320,6 +327,7 @@ Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 
 | Secret | Location | Notes |
 |--------|----------|-------|
+| TLS certificates | `volumes/mosquitto/certs/` (gitignored) | Auto-generated on first start |
 | Server-side credentials | `.env` (gitignored) | Template in `.env.example` |
 | Flask secret key | `.env` (`FLASK_SECRET_KEY`) | Used for session signing |
 | Site name | `.env` (`SITE_NAME`) | Page titles, nav bar, email subjects |
@@ -345,7 +353,7 @@ Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 
 ## Known issues / limitations
 
-1. **No TLS on MQTT** — The broker listens on plain TCP. Credentials are sent in the clear over WiFi. Acceptable on a trusted home network.
+1. **MQTT TLS uses `setInsecure()`** — The firmware encrypts the MQTT connection but does not verify the server certificate (no protection against active MITM). This is acceptable on a home WiFi network where the primary threat is passive eavesdropping. The plain listener (port 1883) is still available internally for the Python subscriber and backward-compatible devices.
 
 2. **Synchronous DB in Flask** — PyMySQL is synchronous; each request blocks a Gunicorn worker during DB queries. With 2 workers this is fine for small deployments. For higher load, increase workers or switch to an async framework.
 
@@ -360,10 +368,7 @@ Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 ### 1. CSV/JSON data export
 Add a `/export` route that streams measurements as CSV with appropriate `Content-Disposition` header.
 
-### 2. MQTT over TLS
-Add a second Mosquitto listener on port 8883 with TLS certificates. Update the firmware to use `WiFiClientSecure`.
-
-### 3. Grafana integration
+### 2. Grafana integration
 Add a `grafana` service to `docker-compose.yml` with MariaDB as a data source.
 
 ---
@@ -407,6 +412,6 @@ docker exec -it ngnt-geiger-mariadb \
 ```bash
 cd ngnt-geiger-dockerized
 docker compose down
-rm -rf volumes/mariadb/* volumes/mosquitto/data/* data/
+rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
 docker compose up -d
 ```
