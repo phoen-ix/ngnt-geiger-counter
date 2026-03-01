@@ -41,25 +41,25 @@ BEGIN
   DECLARE v_max_date DATE;
   DECLARE v_new_end  DATE;
   DECLARE v_pname    VARCHAR(20);
+  DECLARE v_max_str  VARCHAR(50) DEFAULT NULL;
 
   -- Find the current highest explicitly-defined upper boundary.
   -- RANGE COLUMNS stores the datetime boundary as a datetime string in
-  -- PARTITION_DESCRIPTION (e.g. '2026-04-01 00:00:00'); CAST … AS DATE handles that.
-  -- Falls back to the first day of the current quarter for a fresh table.
-  -- The subquery filters out p_future (MAXVALUE) before CAST, avoiding a
-  -- '0000-00-00' error under strict SQL mode.
-  SELECT COALESCE(
-    MAX(CAST(pd AS DATE)),
-    MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 1) QUARTER
-  )
-  INTO v_max_date
-  FROM (
-    SELECT PARTITION_DESCRIPTION AS pd
-    FROM information_schema.PARTITIONS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME   = 'measurements'
-      AND PARTITION_NAME != 'p_future'
-  ) filtered;
+  -- PARTITION_DESCRIPTION (e.g. '2026-04-01 00:00:00').  We take MAX() on
+  -- the raw string (ISO dates sort correctly) to avoid CAST per row, which
+  -- triggers a '0000-00-00' error under strict SQL mode in MariaDB 11.4.
+  SELECT MAX(PARTITION_DESCRIPTION) INTO v_max_str
+  FROM information_schema.PARTITIONS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME   = 'measurements'
+    AND PARTITION_NAME != 'p_future'
+    AND PARTITION_DESCRIPTION != 'MAXVALUE';
+
+  IF v_max_str IS NOT NULL THEN
+    SET v_max_date = CAST(v_max_str AS DATE);
+  ELSE
+    SET v_max_date = MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 1) QUARTER;
+  END IF;
 
   -- Keep adding quarterly partitions until we have at least 2 years of headroom.
   WHILE v_max_date < DATE_ADD(CURDATE(), INTERVAL 2 YEAR) DO
