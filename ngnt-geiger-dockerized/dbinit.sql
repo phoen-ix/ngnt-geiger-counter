@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `role`          ENUM('admin','user') NOT NULL DEFAULT 'user',
   `pepper`        VARCHAR(64)  DEFAULT NULL,
   `public`        BOOLEAN      NOT NULL DEFAULT FALSE,
+  `pw_version`    INT          NOT NULL DEFAULT 0    COMMENT 'Incremented on password change to invalidate sessions',
   `created_at`    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -164,4 +165,5 @@ INSERT IGNORE INTO `settings` (`key`, `value`) VALUES
   ('smtp_password',           ''),
   ('smtp_from',               ''),
   ('smtp_tls',                '1'),
-  ('base_url',                '');
+  ('base_url',                ''),
+  ('registration_enabled',    '1');

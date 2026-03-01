@@ -112,12 +112,14 @@ CREATE TABLE users (
   role          ENUM('admin','user') NOT NULL DEFAULT 'user',
   pepper        VARCHAR(64)  DEFAULT NULL,    -- for MQTT credential derivation
   public        BOOLEAN      NOT NULL DEFAULT FALSE,
+  pw_version    INT          NOT NULL DEFAULT 0,  -- incremented on password change
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 - `pepper`: shared secret for MAC-based MQTT credential derivation. Set per-user in account settings.
 - `public`: if TRUE, anonymous visitors and other users can see this user's devices on the dashboard.
+- `pw_version`: incremented on every password change. Stored in the session cookie; `before_request` compares it to the DB value and clears the session on mismatch (invalidates other sessions after password change).
 - First admin user is auto-created on startup if table is empty.
 
 ### `devices` table
@@ -180,6 +182,7 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 | `smtp_password` | *(empty)* | Password reset email |
 | `smtp_from` | *(empty)* | Password reset email |
 | `smtp_tls` | `1` | Password reset email |
+| `registration_enabled` | `1` | Register route (open/disabled) |
 
 ---
 
@@ -198,7 +201,9 @@ Key points for v3 integration:
 
 Single-file Flask app with all routes. Key components:
 
-**Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random 20-char password, prints to stdout, and saves to `/app/data/admin_initial_password.txt`. The file is deleted when the admin changes their password.
+**Session security (`before_request`):** On every authenticated request, queries `pw_version` and `role` from the DB. If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login.
+
+**Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random 20-char password, prints to stdout, and saves to `/app/data/admin_initial_password.txt` (mode 0600). The file is deleted when the admin changes their password.
 
 **Routes:**
 

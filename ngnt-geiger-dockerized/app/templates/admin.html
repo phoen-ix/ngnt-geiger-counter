@@ -35,6 +35,13 @@
                    value="{{ settings.get('default_alert_threshold', '0.5') }}">
         </div>
         <div class="form-row">
+            <label for="s-reg">Registration</label>
+            <select id="s-reg" name="registration_enabled" style="width:260px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;padding:6px 12px;font-size:0.85rem;">
+                <option value="1"{% if settings.get('registration_enabled', '1') == '1' %} selected{% endif %}>Open</option>
+                <option value="0"{% if settings.get('registration_enabled', '1') == '0' %} selected{% endif %}>Disabled</option>
+            </select>
+        </div>
+        <div class="form-row">
             <label>&nbsp;</label>
             <button type="submit" class="btn">Save Settings</button>
         </div>

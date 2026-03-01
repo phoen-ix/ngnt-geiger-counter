@@ -26,6 +26,32 @@ def inject_site_name():
     return {'site_name': SITE_NAME}
 
 
+@app.before_request
+def refresh_session():
+    """Verify logged-in user still exists, password hasn't changed, and refresh role."""
+    if 'user_id' not in session or request.endpoint == 'static':
+        return
+    try:
+        db = get_db()
+        try:
+            with db.cursor() as cur:
+                cur.execute("SELECT pw_version, role FROM users WHERE id = %s",
+                            (session['user_id'],))
+                user = cur.fetchone()
+        finally:
+            db.close()
+        if not user:
+            session.clear()
+            return
+        if 'pw_version' in session and user['pw_version'] != session['pw_version']:
+            session.clear()
+            return
+        session['role'] = user['role']
+        session['pw_version'] = user['pw_version']
+    except Exception:
+        pass
+
+
 # ── Admin bootstrap ─────────────────────────────────────────────────────────
 
 def bootstrap_admin():
@@ -46,7 +72,9 @@ def bootstrap_admin():
             print(f'{"="*60}\n', flush=True)
 
             os.makedirs('/app/data', exist_ok=True)
-            with open('/app/data/admin_initial_password.txt', 'w') as f:
+            fd = os.open('/app/data/admin_initial_password.txt',
+                         os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w') as f:
                 f.write(f'Username: admin\nPassword: {password}\n')
     db.close()
 
@@ -105,6 +133,7 @@ def login():
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['role'] = user['role']
+            session['pw_version'] = user.get('pw_version', 0)
             flash('Logged in.', 'success')
             return redirect(url_for('dashboard'))
         flash('Invalid username or password.', 'error')
@@ -113,6 +142,15 @@ def login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    db = get_db()
+    try:
+        settings = get_settings(db)
+    finally:
+        db.close()
+    if settings.get('registration_enabled', '1') != '1':
+        flash('Registration is currently disabled.', 'error')
+        return redirect(url_for('login'))
+
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip() or None
@@ -160,6 +198,7 @@ def forgot_password():
         db = get_db()
         settings = get_settings(db)
         with db.cursor() as cur:
+            cur.execute("DELETE FROM password_resets WHERE used = TRUE OR expires_at <= NOW()")
             cur.execute("SELECT id, email FROM users WHERE username = %s", (username,))
             user = cur.fetchone()
             if user and user['email']:
@@ -203,7 +242,8 @@ def reset_password(token):
         else:
             pw_hash = generate_password_hash(password)
             with db.cursor() as cur:
-                cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (pw_hash, reset['user_id']))
+                cur.execute("UPDATE users SET password_hash = %s, pw_version = pw_version + 1 WHERE id = %s",
+                            (pw_hash, reset['user_id']))
                 cur.execute("UPDATE password_resets SET used = TRUE WHERE id = %s", (reset['id'],))
             db.close()
             flash('Password reset. Please log in.', 'success')
@@ -281,7 +321,6 @@ def dashboard():
 
     if visible_ids:
         with db.cursor() as cur:
-            placeholders = ','.join(['%s'] * len(visible_ids))
             filter_ids = [device] if device != 'all' else visible_ids
 
             if not filter_ids:
@@ -484,7 +523,8 @@ def account():
             else:
                 pw_hash = generate_password_hash(new_pw)
                 with db.cursor() as cur:
-                    cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (pw_hash, user_id))
+                    cur.execute("UPDATE users SET password_hash = %s, pw_version = pw_version + 1 WHERE id = %s",
+                                (pw_hash, user_id))
                 # Remove initial password file if admin changes password
                 try:
                     os.remove('/app/data/admin_initial_password.txt')
@@ -508,7 +548,7 @@ def account():
 
 SETTINGS_KEYS = [
     'base_url', 'display_timezone', 'offline_timeout_minutes',
-    'default_cpm_factor', 'default_alert_threshold',
+    'default_cpm_factor', 'default_alert_threshold', 'registration_enabled',
 ]
 SMTP_KEYS = [
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_tls',
@@ -543,26 +583,30 @@ def admin():
                         cur.execute(stmt, (key, val.strip()))
             flash('SMTP settings saved.', 'success')
 
-        elif action == 'toggle_role':
-            target_id = int(request.form.get('target_user_id'))
-            if target_id != session['user_id']:
+        elif action in ('toggle_role', 'toggle_public', 'delete_user'):
+            try:
+                target_id = int(request.form.get('target_user_id', 0))
+            except (ValueError, TypeError):
+                flash('Invalid request.', 'error')
+                db.close()
+                return redirect(url_for('admin'))
+
+            if action == 'toggle_role':
+                if target_id != session['user_id']:
+                    with db.cursor() as cur:
+                        cur.execute("SELECT role FROM users WHERE id = %s", (target_id,))
+                        u = cur.fetchone()
+                        if u:
+                            new_role = 'user' if u['role'] == 'admin' else 'admin'
+                            cur.execute("UPDATE users SET role = %s WHERE id = %s", (new_role, target_id))
+                    flash('Role updated.', 'success')
+
+            elif action == 'toggle_public':
                 with db.cursor() as cur:
-                    cur.execute("SELECT role FROM users WHERE id = %s", (target_id,))
-                    u = cur.fetchone()
-                    if u:
-                        new_role = 'user' if u['role'] == 'admin' else 'admin'
-                        cur.execute("UPDATE users SET role = %s WHERE id = %s", (new_role, target_id))
-                flash('Role updated.', 'success')
+                    cur.execute("UPDATE users SET `public` = NOT `public` WHERE id = %s", (target_id,))
+                flash('Visibility updated.', 'success')
 
-        elif action == 'toggle_public':
-            target_id = int(request.form.get('target_user_id'))
-            with db.cursor() as cur:
-                cur.execute("UPDATE users SET `public` = NOT `public` WHERE id = %s", (target_id,))
-            flash('Visibility updated.', 'success')
-
-        elif action == 'delete_user':
-            target_id = int(request.form.get('target_user_id'))
-            if target_id != session['user_id']:
+            elif action == 'delete_user' and target_id != session['user_id']:
                 with db.cursor() as cur:
                     # Unprovision all devices
                     cur.execute("SELECT device_id FROM devices WHERE user_id = %s", (target_id,))
