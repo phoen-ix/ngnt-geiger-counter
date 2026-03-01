@@ -325,14 +325,21 @@ The `v2.0` tag and release body must both be updated manually after pushing chan
 git tag -f v2.0 HEAD
 git push --force origin v2.0
 
-# 2. Update the release body via the GitHub API
+# 2. Find the release ID (the /releases/tags/ endpoint breaks after a force-pushed tag)
 TOKEN=$(git remote get-url origin | sed 's|https://[^:]*:\(.*\)@github.com.*|\1|')
+RELEASE_ID=$(curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/phoen-ix/ngnt-geiger-counter/releases" \
+  | python3 -c "import sys,json; print(next(r['id'] for r in json.load(sys.stdin) if r['tag_name']=='v2.0'))")
+
+# 3. Update the release body using the numeric release ID
 curl -s -X PATCH \
   -H "Authorization: token $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://api.github.com/repos/phoen-ix/ngnt-geiger-counter/releases/tags/v2.0" \
-  -d '{"body": "…updated release notes…"}'
+  "https://api.github.com/repos/phoen-ix/ngnt-geiger-counter/releases/$RELEASE_ID" \
+  -d '{"tag_name": "v2.0", "body": "…updated release notes…"}'
 ```
+
+**Important:** After `git push --force` moves a tag, the GitHub API endpoint `/releases/tags/v2.0` returns 404 until the release object is re-associated with the new tag. Use the `/releases` list endpoint to find the numeric release ID, then PATCH by ID. The `tag_name` field in the PATCH body re-links the release to the moved tag.
 
 Both steps are needed — the API call updates the text but does **not** move the tag. Without `git tag -f` + `git push --force origin v2.0`, the release page keeps pointing at the old commit and shows a stale timestamp.
 
