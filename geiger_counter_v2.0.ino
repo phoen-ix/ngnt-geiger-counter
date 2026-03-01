@@ -237,8 +237,51 @@ void reconnect() {
       }
 
       if (retryCounter > connectionAttempts) {
-        USE_SERIAL.println("Restarting");
-        ESP.restart();
+        USE_SERIAL.println("MQTT failed — opening config portal");
+        retryCounter = 0;
+
+        lcd.clear();
+        lcd.setCursor(1, 0);
+        lcd.print("MQTT connect failed");
+        lcd.setCursor(4, 1);
+        lcd.print("AccessPoint:");
+        lcd.setCursor(0, 2);
+        lcd.print("Name " + deviceHostname);
+        lcd.setCursor(0, 3);
+        lcd.print("Pass " + wifiApPass);
+
+        WiFiManagerParameter wm_server("mqtt_server", "MQTT Server",   cfgMqttServer, 64);
+        WiFiManagerParameter wm_port  ("mqtt_port",   "MQTT Port",     cfgMqttPort,    6);
+        WiFiManagerParameter wm_user  ("mqtt_user",   "MQTT User",     cfgMqttUser,   32);
+        WiFiManagerParameter wm_pw    ("mqtt_userpw", "MQTT Password", cfgMqttUserPw, 64, " type='password'");
+        WiFiManagerParameter wm_pepper("mqtt_pepper", "MQTT Pepper",   cfgMqttPepper, 64, " type='password'");
+
+        WiFiManager wifiManager;
+        wifiManager.setSaveConfigCallback(saveConfigCallback);
+        wifiManager.addParameter(&wm_server);
+        wifiManager.addParameter(&wm_port);
+        wifiManager.addParameter(&wm_user);
+        wifiManager.addParameter(&wm_pw);
+        wifiManager.addParameter(&wm_pepper);
+        wifiManager.setClass("invert");
+        wifiManager.setHostname(deviceHostname.c_str());
+        wifiManager.startConfigPortal(deviceHostname.c_str(), wifiApPass.c_str());
+
+        strlcpy(cfgMqttServer, wm_server.getValue(), sizeof(cfgMqttServer));
+        strlcpy(cfgMqttPort,   wm_port.getValue(),   sizeof(cfgMqttPort));
+        strlcpy(cfgMqttUser,   wm_user.getValue(),   sizeof(cfgMqttUser));
+        strlcpy(cfgMqttUserPw, wm_pw.getValue(),     sizeof(cfgMqttUserPw));
+        strlcpy(cfgMqttPepper, wm_pepper.getValue(), sizeof(cfgMqttPepper));
+
+        if (shouldSaveConfig) {
+          saveConfig();
+          shouldSaveConfig = false;
+        }
+
+        deriveMqttCredentials();
+        buildMqttStrings();
+        client.setServer(cfgMqttServer, atoi(cfgMqttPort));
+        continue;
       }
 
       lcd.setCursor(0, 3);
