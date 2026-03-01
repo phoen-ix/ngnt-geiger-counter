@@ -165,6 +165,9 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - **Timezone** and **CPM conversion factor** are configurable via the WiFiManager portal (no re-flash needed). Timezone defaults to `Europe/Vienna`; CPM factor defaults to `0.0057` (SBM-20 tube). Invalid CPM values (zero, negative, non-numeric) are silently ignored and the previous value is kept.
 - The ISR (`impulse()`) only increments the counter — no Serial output inside the interrupt.
 - `impulseCounter` is snapshot with `noInterrupts()`/`interrupts()` before use, avoiding race conditions between the ISR and the main loop (consistent CPM/uSv/h values and no lost pulses on reset).
+- The first 60 s measurement window starts after `setup()` completes (`previousMillis = millis()`), so the first published reading covers a clean collection period rather than including boot time.
+- The MQTT JSON message is built with `snprintf` into a stack buffer instead of `String` concatenation, avoiding heap fragmentation on the ESP8266.
+- The device is publish-only — there is no MQTT subscribe or callback.
 
 ### `ngnt-geiger-dockerized/scripts/pm2/mqtt_bro_impulses.py`
 
