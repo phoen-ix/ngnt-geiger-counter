@@ -13,11 +13,12 @@ if [ -f "$DEVICES_CONF" ]; then
     done < "$DEVICES_CONF"
 fi
 
-# Set permissions
-user="$(id -u)"
-if [ "$user" = '0' ]; then
-	[ -d "/mosquitto" ] && chown -R mosquitto:mosquitto /mosquitto || true
-fi
+# passwd.txt must be owned by root with restricted permissions
+chmod 0700 /mosquitto/config/passwd.txt
+chown root:root /mosquitto/config/passwd.txt
+
+# Data and log dirs need mosquitto ownership for the daemon to write
+chown -R mosquitto:mosquitto /mosquitto/data /mosquitto/log 2>/dev/null || true
 
 
 exec "$@"
