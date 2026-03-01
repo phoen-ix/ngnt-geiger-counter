@@ -8,6 +8,17 @@ function utcToLocal(string $utc): string {
         ->format('Y-m-d H:i:s');
 }
 
+// Time-range options: key → [SQL interval literal, human label]
+$range_options = [
+    '1h'  => ['1 HOUR',  'Last hour'],
+    '6h'  => ['6 HOUR',  'Last 6 hours'],
+    '24h' => ['24 HOUR', 'Last 24 hours'],
+    '7d'  => ['7 DAY',   'Last 7 days'],
+];
+$range = array_key_exists($_GET['range'] ?? '', $range_options) ? $_GET['range'] : '24h';
+$sql_interval = $range_options[$range][0];
+$range_label  = $range_options[$range][1];
+
 $db_host = 'mariadb';
 $db_name = getenv('MARIADB_DATABASE') ?: 'ngnt-geigercounter';
 $db_user = getenv('MARIADB_USER');
@@ -32,12 +43,13 @@ try {
 
     $chart_data = $pdo->query(
         "SELECT measured_at, cpm, usvh FROM measurements
-         WHERE measured_at >= NOW() - INTERVAL 24 HOUR
+         WHERE measured_at >= NOW() - INTERVAL {$sql_interval}
          ORDER BY measured_at ASC"
     )->fetchAll(PDO::FETCH_ASSOC);
 
     $recent = $pdo->query(
         "SELECT device_id, measured_at, cpm, usvh FROM measurements
+         WHERE measured_at >= NOW() - INTERVAL {$sql_interval}
          ORDER BY measured_at DESC LIMIT 100"
     )->fetchAll(PDO::FETCH_ASSOC);
 
@@ -54,7 +66,7 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="60">
+    <meta http-equiv="refresh" content="60;url=?range=<?= htmlspecialchars($range) ?>">
     <title>NGNT Geiger Counter</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
@@ -161,6 +173,32 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
         }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: #1c2129; }
+        .range-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .range-bar a {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid #30363d;
+            background: #161b22;
+            color: #8b949e;
+            transition: border-color 0.15s;
+        }
+        .range-bar a:hover {
+            border-color: #58a6ff;
+        }
+        .range-bar a.active {
+            background: #58a6ff;
+            border-color: #58a6ff;
+            color: #fff;
+        }
         canvas { max-height: 280px; }
     </style>
 </head>
@@ -178,6 +216,12 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
         <?php endif; ?>
     </p>
 </header>
+
+<div class="range-bar">
+    <?php foreach ($range_options as $key => $opt): ?>
+        <a href="?range=<?= $key ?>"<?= $key === $range ? ' class="active"' : '' ?>><?= htmlspecialchars($opt[1]) ?></a>
+    <?php endforeach; ?>
+</div>
 
 <?php if ($db_error): ?>
     <div class="error">Database error: <?= htmlspecialchars($db_error) ?></div>
@@ -213,16 +257,16 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
 </div>
 
 <div class="section">
-    <h2>Last 24 hours</h2>
+    <h2><?= htmlspecialchars($range_label) ?></h2>
     <?php if (empty($chart_data)): ?>
-        <p class="no-data">No data available for the last 24 hours.</p>
+        <p class="no-data">No data available for the <?= htmlspecialchars(lcfirst($range_label)) ?>.</p>
     <?php else: ?>
         <canvas id="chart"></canvas>
     <?php endif; ?>
 </div>
 
 <div class="section">
-    <h2>Recent measurements</h2>
+    <h2>Recent measurements &mdash; <?= htmlspecialchars(lcfirst($range_label)) ?></h2>
     <?php if (empty($recent)): ?>
         <p class="no-data">No measurements recorded yet.</p>
     <?php else: ?>

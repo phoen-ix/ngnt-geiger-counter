@@ -178,7 +178,7 @@ On first start, MariaDB runs `dbinit.sql` automatically and creates the `measure
 
 **3. Open the dashboard**
 
-Navigate to `http://<your-server>:1880` (or whatever port you set for `PHP_APACHE_PORTS`).
+Navigate to `http://<your-server>:1880` (or whatever port you set for `PHP_APACHE_PORTS`). Use the pill buttons at the top to switch between 1 h, 6 h, 24 h (default), and 7 d time ranges.
 
 ### Reset (wipe all data and start fresh)
 
@@ -215,7 +215,7 @@ All containers share the internal bridge network `172.18.1.0/24` (configurable v
 ## Open / future ideas
 
 - Front plate revision: cutouts for two toggle switches (LCD backlight, speaker mute)
-- Web dashboard: configurable time range, CSV/JSON data export
+- Web dashboard: CSV/JSON data export
 - MQTT over TLS (port 8883) for public-facing deployments
 - Support for multiple geiger counter devices on the same backend
 - Grafana integration (MariaDB datasource)

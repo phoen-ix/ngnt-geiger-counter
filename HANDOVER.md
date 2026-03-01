@@ -23,10 +23,10 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | MQTT broker (Mosquitto) | ✅ Done | Auth, ACL, Docker, entrypoint password generation |
 | DB schema (`dbinit.sql`) | ✅ Done | `measurements` table, auto-applied on first start |
 | Python subscriber (`mqtt_bro_impulses.py`) | ✅ Done | Parses JSON, inserts into MariaDB |
-| PHP web dashboard (`app/index.php`) | ✅ Done | Chart.js (last 24 h), table of last 100 readings |
+| PHP web dashboard (`app/index.php`) | ✅ Done | Chart.js, configurable time range (1h/6h/24h/7d), table of recent readings |
 | `.gitignore` / `.env.example` | ✅ Done | Ready for GitHub |
 | MQTT over TLS | ❌ Not started | See future ideas |
-| Dashboard: configurable time range | ❌ Not started | |
+| Dashboard: configurable time range | ✅ Done | `?range=` GET param (1h/6h/24h/7d) |
 | Dashboard: data export (CSV/JSON) | ❌ Not started | |
 | Multiple device support | ❌ Not started | Schema supports it, dashboard does not yet filter |
 | Grafana integration | ❌ Not started | |
@@ -186,7 +186,8 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 
 - Single-file PHP dashboard — no framework, no build step.
 - DB credentials come from environment variables set in `docker-compose.yml` for the php_apache service.
-- The page has a `<meta http-equiv="refresh" content="60">` for auto-reload.
+- The page has a `<meta http-equiv="refresh" content="60">` for auto-reload (preserves the selected time range).
+- **Time range selector:** pill buttons at the top let the user choose 1h / 6h / 24h (default) / 7d. Selection is passed as `?range=` GET parameter. Invalid values fall back to `24h`. Only hardcoded interval literals from a whitelist reach SQL — no user input is interpolated.
 - Chart.js 4.4.0 loaded from jsDelivr CDN. If deploying offline, download and serve locally.
 - Chart data is embedded as JSON directly in the HTML (PHP → `json_encode`). No separate API endpoint.
 - The dose rate card turns orange when uSv/h > 0.5 (roughly 5× typical background).
@@ -246,19 +247,16 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 
 ## Suggested next steps (in rough priority order)
 
-### 1. Dashboard: configurable time range
-Add a form/button to the `index.php` to select last 1 h / 6 h / 24 h / 7 d. Pass as a `GET` parameter and adjust the SQL `INTERVAL` accordingly.
-
-### 2. Dashboard: CSV export
+### 1. Dashboard: CSV export
 Add a simple `export.php` that runs `SELECT * FROM measurements ORDER BY measured_at DESC` and outputs `Content-Type: text/csv`.
 
-### 3. MQTT over TLS
+### 2. MQTT over TLS
 Generate a self-signed cert (or use Let's Encrypt). Add a second listener block to `mosquitto.conf` on port 8883 with `cafile`, `certfile`, `keyfile`. Update the sketch to use WiFiClientSecure and load the CA cert.
 
-### 4. Multi-device dashboard
+### 3. Multi-device dashboard
 The schema already stores `device_id`. Add a device selector dropdown to `index.php` and filter queries with `WHERE device_id = ?`.
 
-### 5. Grafana integration
+### 4. Grafana integration
 MariaDB can be used directly as a Grafana data source. Add a `grafana` service to `docker-compose.yml`, mount a provisioning config pointing at MariaDB, and provision a dashboard JSON.
 
 ---
