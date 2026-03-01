@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (v3.0 — user accounts, Flask, web-based device provisioning)
+Last updated: 2026-03-01 (v3.1 — comprehensive test suite)
 
 ---
 
@@ -27,6 +27,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Admin page | Done | Global settings, SMTP config, user management |
 | Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
 | Password reset | Done | Token-based, email via SMTP |
+| Test suite | Done | 98 pytest tests, mocked DB, no external deps |
 | MQTT over TLS | Not started | See future ideas |
 | Data export (CSV/JSON) | Not started | |
 | Grafana integration | Not started | |
@@ -286,6 +287,32 @@ Python 3.13-slim + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, Guni
 ### `Dockerfiles/DockerfileSubscriber`
 
 Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
+
+### `tests/` — pytest test suite
+
+98 tests run on the host without Docker or external dependencies. All DB access is mocked via `MockCursor`/`MockDB` classes in `testutils.py`.
+
+**Key design decisions:**
+
+- **`MockCursor` position advances on `fetchone()`/`fetchall()`, NOT on `execute()`** — this means INSERT/UPDATE/DELETE queries that don't fetch don't consume a response slot. Responses are queued with `add_response(fetchone=...)` or `add_response(fetchall=...)`.
+- **Bootstrap isolation** — `app.py` calls `bootstrap_admin_with_retry()` at import time. The session-scoped `app_instance` fixture patches `helpers.get_db` before importing `app` to prevent real DB connections.
+- **`before_request` overhead** — every authenticated request triggers 2 DB queries (user lookup + session timeout). The `queue_before_request(cursor)` helper queues these; every test with a logged-in session must call it.
+- **`follow_redirects=True` quirk** — when a POST redirects to a GET, `before_request` fires twice (once per request). Tests using `follow_redirects=True` must queue responses for both the POST and the redirected GET.
+- **CSRF/rate limiting** — disabled globally via `WTF_CSRF_ENABLED=False` and `RATELIMIT_ENABLED=False`. Dedicated tests in `test_middleware.py` re-enable them to verify they work.
+
+**Files:**
+
+| File | Purpose |
+|------|---------|
+| `conftest.py` | Fixtures: `app_instance` (session), `mock_cursor` (per-test), `client`, `auth_client`, `admin_client` |
+| `testutils.py` | `MockCursor`, `MockDB`, `queue_before_request()`, `queue_settings()` |
+| `test_helpers.py` | Unit tests for `helpers.py` functions (credential derivation, provisioning, decorators, email) |
+| `test_auth.py` | Login, register, logout, forgot/reset password |
+| `test_dashboard.py` | Visibility rules, range/device filtering, empty state |
+| `test_devices.py` | Device CRUD, provisioning/unprovisioning |
+| `test_account.py` | Profile update, password change validation |
+| `test_admin.py` | Settings, SMTP, role/public toggle, user management |
+| `test_middleware.py` | `before_request` session handling, CSRF, rate limiting |
 
 ---
 
