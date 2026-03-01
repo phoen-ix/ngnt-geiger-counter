@@ -20,9 +20,9 @@ rebuild_passwd() {
         done < "$DEVICES_CONF"
     fi
 
-    # passwd.txt must be owned by root but readable by the mosquitto group
-    chown root:mosquitto "$PASSWD_FILE"
-    chmod 0640 "$PASSWD_FILE"
+    # Mosquitto requires root:root ownership on the password file
+    chown root:root "$PASSWD_FILE"
+    chmod 0644 "$PASSWD_FILE"
 }
 
 rebuild_passwd

@@ -56,14 +56,14 @@ def bootstrap_admin():
 
 # Run bootstrap with retries (DB might not be ready)
 def bootstrap_admin_with_retry():
+    print('[bootstrap] waiting for database...', flush=True)
     for attempt in range(30):
         try:
             bootstrap_admin()
             return
-        except Exception as e:
-            print(f'[bootstrap] attempt {attempt + 1}/30 — {e}', flush=True)
+        except Exception:
             time.sleep(2)
-    print('[bootstrap] gave up after 30 attempts', flush=True)
+    print('[bootstrap] gave up waiting for database after 60s', flush=True)
 
 
 bootstrap_admin_with_retry()
