@@ -24,6 +24,7 @@
 #include <ezTime.h>              //https://github.com/ropg/ezTime v0.8.3
 #include <PubSubClient.h>        //https://pubsubclient.knolleary.net/ v2.8.0
 #include <ArduinoJson.h>         //https://arduinojson.org/ v6 or v7
+#include <bearssl/bearssl_hmac.h> // bundled with ESP8266 Arduino core
 #define USE_SERIAL Serial
 
 Timezone Geiger;
@@ -56,6 +57,7 @@ char cfgMqttServer[64] = "your.server.address";
 char cfgMqttPort[6]    = "2883";
 char cfgMqttUser[32]   = "geiger00";
 char cfgMqttUserPw[64] = "geiger00PW";
+char cfgMqttPepper[64] = "";
 
 bool shouldSaveConfig = false;
 
@@ -113,6 +115,7 @@ void loadConfig() {
   strlcpy(cfgMqttPort,   doc["mqttPort"]   | cfgMqttPort,   sizeof(cfgMqttPort));
   strlcpy(cfgMqttUser,   doc["mqttUser"]   | cfgMqttUser,   sizeof(cfgMqttUser));
   strlcpy(cfgMqttUserPw, doc["mqttUserPw"] | cfgMqttUserPw, sizeof(cfgMqttUserPw));
+  strlcpy(cfgMqttPepper, doc["mqttPepper"] | cfgMqttPepper, sizeof(cfgMqttPepper));
   USE_SERIAL.println("Config loaded from flash");
 }
 
@@ -132,6 +135,7 @@ void saveConfig() {
   doc["mqttPort"]   = cfgMqttPort;
   doc["mqttUser"]   = cfgMqttUser;
   doc["mqttUserPw"] = cfgMqttUserPw;
+  doc["mqttPepper"] = cfgMqttPepper;
 
   File file = LittleFS.open(CONFIG_FILE, "w");
   if (!file) {
@@ -141,6 +145,44 @@ void saveConfig() {
   serializeJson(doc, file);
   file.close();
   USE_SERIAL.println("Config saved to flash");
+}
+
+void deriveMqttCredentials() {
+  if (strlen(cfgMqttPepper) == 0 ||
+      strcmp(cfgMqttUser, "geiger00") != 0 ||
+      strcmp(cfgMqttUserPw, "geiger00PW") != 0) {
+    return;
+  }
+
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  char macHex[13];
+  snprintf(macHex, sizeof(macHex), "%02x%02x%02x%02x%02x%02x",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+  // Username: geiger_ + last 6 hex chars of MAC
+  snprintf(cfgMqttUser, sizeof(cfgMqttUser), "geiger_%s", macHex + 6);
+
+  // Password: HMAC-SHA256(pepper, macHex), first 16 hex chars
+  br_hmac_key_context kc;
+  br_hmac_context ctx;
+  br_hmac_key_init(&kc, &br_sha256_vtable,
+                   cfgMqttPepper, strlen(cfgMqttPepper));
+  br_hmac_init(&ctx, &kc, 0);
+  br_hmac_update(&ctx, macHex, 12);
+  uint8_t hmacOut[32];
+  br_hmac_out(&ctx, hmacOut);
+
+  for (int i = 0; i < 8; i++) {
+    snprintf(cfgMqttUserPw + i * 2, 3, "%02x", hmacOut[i]);
+  }
+  cfgMqttUserPw[16] = '\0';
+
+  USE_SERIAL.println("── Auto-provisioned MQTT credentials ──");
+  USE_SERIAL.printf("  MAC:      %s\n", macHex);
+  USE_SERIAL.printf("  Username: %s\n", cfgMqttUser);
+  USE_SERIAL.printf("  Password: %s\n", cfgMqttUserPw);
+  USE_SERIAL.println("───────────────────────────────────────");
 }
 
 void saveConfigCallback() {
@@ -250,6 +292,7 @@ void setup() {
   WiFiManagerParameter wm_port  ("mqtt_port",   "MQTT Port",     cfgMqttPort,    6);
   WiFiManagerParameter wm_user  ("mqtt_user",   "MQTT User",     cfgMqttUser,   32);
   WiFiManagerParameter wm_pw    ("mqtt_userpw", "MQTT Password", cfgMqttUserPw, 64, " type='password'");
+  WiFiManagerParameter wm_pepper("mqtt_pepper", "MQTT Pepper",   cfgMqttPepper, 64, " type='password'");
 
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
@@ -257,6 +300,7 @@ void setup() {
   wifiManager.addParameter(&wm_port);
   wifiManager.addParameter(&wm_user);
   wifiManager.addParameter(&wm_pw);
+  wifiManager.addParameter(&wm_pepper);
   wifiManager.setClass("invert");
   wifiManager.setScanDispPerc(true);
   wifiManager.setShowInfoErase(false);
@@ -281,13 +325,18 @@ void setup() {
   strlcpy(cfgMqttPort,   wm_port.getValue(),   sizeof(cfgMqttPort));
   strlcpy(cfgMqttUser,   wm_user.getValue(),   sizeof(cfgMqttUser));
   strlcpy(cfgMqttUserPw, wm_pw.getValue(),     sizeof(cfgMqttUserPw));
+  strlcpy(cfgMqttPepper, wm_pepper.getValue(), sizeof(cfgMqttPepper));
 
   // Save to flash only if the user submitted the portal
   if (shouldSaveConfig) {
     saveConfig();
-    buildMqttStrings();
     shouldSaveConfig = false;
   }
+
+  // Derive credentials from MAC + pepper (no-op if pepper is empty or
+  // the user has customised their MQTT user/password away from defaults)
+  deriveMqttCredentials();
+  buildMqttStrings();
 
   client.setServer(cfgMqttServer, atoi(cfgMqttPort));
   client.setCallback(callback);

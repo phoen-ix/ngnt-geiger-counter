@@ -61,6 +61,7 @@ services:
             - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
             - ./config/mosquitto/acls:/mosquitto/config/acls:ro
             - ./config/mosquitto/passwd.txt:/mosquitto/config/passwd.txt
+            - ./config/mosquitto/devices.conf:/mosquitto/config/devices.conf
             - ./config/mosquitto/conf.d/:/mosquitto/config/conf.d/:ro
             - ./log/mosquitto/:/mosquitto/log/
             - ./volumes/mosquitto/data:/mosquitto/data/

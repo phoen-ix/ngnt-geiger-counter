@@ -12,6 +12,7 @@ A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 
 ngnt-geiger-counter/
 ├── geiger_counter_v2.0.ino          # ESP8266 firmware (Wemos D1 R2)
 └── ngnt-geiger-dockerized/
+    ├── add-device.sh                # Register a device via MAC-based auto-provisioning
     ├── app/                         # PHP web dashboard source
     │   └── index.php
     ├── dbinit.sql                   # DB schema — auto-applied on first start
@@ -113,8 +114,9 @@ The firmware uses **LittleFS + WiFiManager custom parameters** to store MQTT set
 |-------|---------|------------|
 | MQTT Server | `your.server.address` | your server's hostname or IP |
 | MQTT Port | `2883` | `MOSQUITTO_PORTS` in `.env` |
-| MQTT User | `geiger00` | `MQTT_GEIGER_USER` in `.env` |
-| MQTT Password | `geiger00PW` | `MQTT_GEIGER_USERPW` in `.env` |
+| MQTT User | `geiger00` | `MQTT_GEIGER_USER` in `.env` (or leave at default for auto-provisioning) |
+| MQTT Password | `geiger00PW` | `MQTT_GEIGER_USERPW` in `.env` (or leave at default for auto-provisioning) |
+| MQTT Pepper | *(empty)* | `MQTT_PEPPER` in `.env` (see Auto-provisioning below) |
 
 Settings are saved to `/config.json` on the device flash and reloaded on every boot. To reconfigure, reset the WiFi settings (hold the reset method of your choice, or call `wifiManager.resetSettings()`) to trigger the portal again.
 
@@ -129,6 +131,29 @@ Settings are saved to `/config.json` on the device flash and reloaded on every b
 ```json
 {"id":"geiger00","ts":"2026-02-24 14:30:00","cpm":42,"usvh":0.2394}
 ```
+
+---
+
+## Auto-provisioning (zero-config MQTT credentials)
+
+Instead of manually setting unique MQTT credentials on each device and server, you can use **MAC-based auto-provisioning**. Both sides derive the same username and password from the device's MAC address and a shared secret ("pepper").
+
+**Setup:**
+
+1. Choose a pepper (any string) and set `MQTT_PEPPER=<your-pepper>` in `.env`
+2. Flash the device and open the WiFiManager portal — enter the same pepper in the "MQTT Pepper" field, leave MQTT User and Password at their defaults (`geiger00` / `geiger00PW`)
+3. On the server, register the device:
+   ```bash
+   cd ngnt-geiger-dockerized
+   ./add-device.sh AA:BB:CC:DD:EE:FF   # the device's WiFi MAC address
+   ```
+4. The script prints the derived username and password, adds them to Mosquitto, and persists them in `config/mosquitto/devices.conf`
+5. Restart the broker: `docker restart ngnt-geiger-mosquitto`
+6. The device connects automatically on next boot
+
+**How it works:** The firmware computes `username = geiger_<last 6 hex of MAC>` and `password = first 16 hex chars of HMAC-SHA256(pepper, mac)`. The `add-device.sh` script computes the same values using `openssl`. Derived credentials are never saved to device flash — they're recomputed on every boot.
+
+**Backward compatible:** If the pepper field is left empty, or the user has changed MQTT User/Password away from the defaults, auto-provisioning is skipped entirely and the device uses whatever credentials are configured.
 
 ---
 
