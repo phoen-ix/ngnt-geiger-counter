@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Devices — {{ site_name }}{% endblock %}
+
+{% block content %}
+
+<!-- ── Add device ─────────────────────────────────────────────────────────── -->
+<div class="section">
+    <h2>Register New Device</h2>
+    {% if not user_pepper %}
+        <p class="no-data">
+            You need to set a pepper in your <a href="{{ url_for('account') }}">account settings</a> before registering devices.
+        </p>
+    {% else %}
+    <form method="post">
+        <input type="hidden" name="action" value="add_device">
+        <div class="form-row">
+            <label for="mac">MAC Address</label>
+            <input type="text" id="mac" name="mac_address" placeholder="AA:BB:CC:DD:EE:FF" required
+                   pattern="^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+                   value="{{ request.form.get('mac_address', '') }}">
+        </div>
+        <div class="form-row">
+            <label for="display_name">Display Name (optional)</label>
+            <input type="text" id="display_name" name="display_name"
+                   value="{{ request.form.get('display_name', '') }}">
+        </div>
+        <div class="form-row">
+            <label>&nbsp;</label>
+            <button type="submit" class="btn">Register Device</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
+
+<!-- ── Device list ────────────────────────────────────────────────────────── -->
+<div class="section">
+    <h2>Your Devices</h2>
+    {% if not devices %}
+        <p class="no-data">No devices registered yet.</p>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>Device ID</th>
+                <th>Display Name</th>
+                <th>MAC</th>
+                <th>Status</th>
+                <th>Last Seen</th>
+                <th>Provisioned</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dev in devices %}
+            <tr>
+                <td>{{ dev['device_id'] }}</td>
+                <td>
+                    <form method="post" style="display:flex;gap:6px;">
+                        <input type="hidden" name="action" value="update_device">
+                        <input type="hidden" name="device_db_id" value="{{ dev['id'] }}">
+                        <input type="text" name="display_name" value="{{ dev['display_name'] or '' }}" placeholder="{{ dev['device_id'] }}">
+                        <button type="submit" class="btn-sm">Save</button>
+                    </form>
+                </td>
+                <td style="font-size:0.78rem;color:#6e7681;">{{ dev['mac_address'] }}</td>
+                <td class="{{ 'status-online' if dev['status'] == 'online' else 'status-offline' }}">
+                    {{ dev['status'] }}
+                </td>
+                <td>{{ dev['last_seen'] or '&mdash;'|safe }}</td>
+                <td>{{ 'Yes' if dev['provisioned'] else 'Pending' }}</td>
+                <td>
+                    <form method="post" onsubmit="return confirm('Delete this device? This will also remove it from Mosquitto.');">
+                        <input type="hidden" name="action" value="delete_device">
+                        <input type="hidden" name="device_db_id" value="{{ dev['id'] }}">
+                        <button type="submit" class="btn-sm btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+{% endblock %}

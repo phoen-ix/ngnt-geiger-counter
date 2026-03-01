@@ -1,6 +1,6 @@
 # not great, not terrible — geiger counter
 
-A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20×4 I²C LCD — housed in a 3D-printed case. Version 2 adds WiFi, NTP time sync, MQTT telemetry, and a self-hosted server stack (Docker) for long-term data storage and a live web dashboard.
+A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case. Version 3 adds user accounts, web-based device provisioning, and a Flask dashboard replacing the previous PHP stack.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -12,20 +12,21 @@ A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 
 ngnt-geiger-counter/
 ├── geiger_counter_v2.0.ino          # ESP8266 firmware (Wemos D1 R2)
 └── ngnt-geiger-dockerized/
-    ├── add-device.sh                # Register a device via MAC-based auto-provisioning
-    ├── app/                         # PHP web dashboard source
-    │   ├── index.php
-    │   └── admin.php            # Admin settings page
+    ├── app/                         # Flask web application
+    │   ├── app.py                   # Routes, admin bootstrap
+    │   ├── helpers.py               # Credential derivation, provisioning, auth
+    │   ├── requirements.txt
+    │   ├── static/style.css
+    │   └── templates/               # Jinja2 templates (9 files)
     ├── dbinit.sql                   # DB schema — auto-applied on first start
-    ├── config/                      # Static config for Mosquitto & Apache
+    ├── config/                      # Static config for Mosquitto & MariaDB
     ├── docker-compose.yml
     ├── Dockerfiles/
     ├── scripts/
-    │   ├── mosquitto/               # Container entrypoint (generates passwords)
+    │   ├── mosquitto/               # Container entrypoint (passwords + reload watcher)
     │   └── pm2/                     # Python MQTT→DB subscriber
-    ├── volumes/                     # Runtime data only — safe to wipe for a reset
-    │   ├── mariadb/
-    │   └── mosquitto/data/
+    ├── data/                        # Runtime data (admin initial password)
+    ├── volumes/                     # Runtime DB data — safe to wipe for a reset
     ├── .env.example                 # Copy to .env and fill in before first run
     └── log/mosquitto/
 ```
@@ -40,26 +41,26 @@ ngnt-geiger-counter/
 |-----|------|
 | 1 | RadiationD v1.1 Cajoe (search "diy geiger" on auction sites) |
 | 1 | Wemos D1 R2 (ESP8266) |
-| 1 | LCD2004 with I²C interface (buy one with the I²C backpack already soldered on) |
+| 1 | LCD2004 with I2C interface (buy one with the I2C backpack already soldered on) |
 | 1 | 3D-printed case — [Printables model 399474](https://www.printables.com/model/399474-ngnt-geiger-counter-not-great-not-terrible) |
 | 7 | M-F Dupont cables |
-| 8 | M3×8 mm screws + nuts |
-| 4 | M3×12 mm screws + nuts |
-| 4 | M3 spacers ≥35 mm + matching screws + nuts |
+| 8 | M3x8 mm screws + nuts |
+| 4 | M3x12 mm screws + nuts |
+| 4 | M3 spacers >=35 mm + matching screws + nuts |
 
 ### Assembly
 
 1. Print the front and back plates.
-2. Mount the Wemos to the back plate (4× M3×8 mm + nuts).
-3. Mount the LCD to the front plate (4× M3×12 mm + nuts).
-4. Remove the 4 acrylic-retaining screws from the RadiationD; mount the board to the front plate (4× M3×8 mm).
+2. Mount the Wemos to the back plate (4x M3x8 mm + nuts).
+3. Mount the LCD to the front plate (4x M3x12 mm + nuts).
+4. Remove the 4 acrylic-retaining screws from the RadiationD; mount the board to the front plate (4x M3x8 mm).
 5. Connect Dupont cables per the pinout below.
 6. Use M3 spacers, screws, and nuts to join front and back plate.
 7. Flash the firmware (see below).
 
 ### Wiring
 
-**LCD → Wemos D1 R2**
+**LCD -> Wemos D1 R2**
 
 | LCD | Wemos |
 |-----|-------|
@@ -68,7 +69,7 @@ ngnt-geiger-counter/
 | SDA | D2 (SDA) |
 | SCL | D1 (SCL) |
 
-**RadiationD v1.1 → Wemos D1 R2**
+**RadiationD v1.1 -> Wemos D1 R2**
 
 | RadiationD | Wemos |
 |------------|-------|
@@ -92,7 +93,7 @@ Install these via the Arduino IDE Library Manager:
 | [PubSubClient](https://pubsubclient.knolleary.net/) | 2.8.0 |
 | [ArduinoJson](https://arduinojson.org/) | v6 or v7 |
 
-Board support: **ESP8266 Arduino core >= 3.0.0** (`esp8266` board package in the IDE). Core 3.0.0 is required for LittleFS, which the firmware uses to persist MQTT configuration.
+Board support: **ESP8266 Arduino core >= 3.0.0** (`esp8266` board package in the IDE).
 
 ### Configuration
 
@@ -104,87 +105,72 @@ const String wifiApPass     = "wifiApPass";    // password for the setup AP
 const char* lcdDateTimeFmt  = "d.m.y    H:i:s"; // date+time format on the LCD
 ```
 
-`wifiApPass` is the password for the temporary WiFi access point the device opens on first boot so you can enter your home network credentials. It is **not** your home network password.
-
 #### Configurable via the WiFiManager portal (no re-flash needed)
 
-The firmware uses **LittleFS + WiFiManager custom parameters** to store MQTT settings on the device's flash. When the setup portal is open, four extra fields appear:
-
-| Field | Default | Must match |
-|-------|---------|------------|
+| Field | Default | Notes |
+|-------|---------|-------|
 | MQTT Server | `your.server.address` | your server's hostname or IP |
 | MQTT Port | `2883` | `MOSQUITTO_PORTS` in `.env` |
-| MQTT User | `geiger00` | `MQTT_GEIGER_USER` in `.env` (or leave at default for auto-provisioning) |
-| MQTT Password | `geiger00PW` | `MQTT_GEIGER_USERPW` in `.env` (or leave at default for auto-provisioning) |
-| MQTT Pepper | *(empty)* | `MQTT_PEPPER` in `.env` (see Auto-provisioning below) |
-| Timezone | `Europe/Vienna` | [tz database name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) for NTP-based local time |
-| CPM Factor (uSv/h) | `0.0057` | Conversion constant for your Geiger-Müller tube (0.0057 for SBM-20) |
-| Dead time (us) | `200` | ISR debounce in microseconds (200 for SBM-20, 50–90 for J305) |
-
-Settings are saved to `/config.json` on the device flash and reloaded on every boot. To reconfigure, reset the WiFi settings (hold the reset method of your choice, or call `wifiManager.resetSettings()`) to trigger the portal again.
+| MQTT User | `geiger00` | leave at default for auto-provisioning |
+| MQTT Password | `geiger00PW` | leave at default for auto-provisioning |
+| MQTT Pepper | *(empty)* | must match your user's pepper in the web UI |
+| Timezone | `Europe/Vienna` | [tz database name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) |
+| CPM Factor (uSv/h) | `0.0057` | Conversion constant for your GM tube |
+| Dead time (us) | `200` | ISR debounce (200 for SBM-20, 50-90 for J305) |
 
 ### What the firmware does
 
-- On boot, if no WiFi credentials are saved, it opens an access point (`GeigerCounter` / `wifiApPass`) and serves a captive portal to configure the network. Credentials are stored in flash and reused on subsequent boots.
-- After connecting, it synchronises time via NTP (ezTime) and connects to the MQTT broker.
-- If MQTT connection fails after 12 attempts, the device opens the config portal again (AP mode) so you can correct server/credential settings without re-flashing.
-- An interrupt on GPIO 12 increments a counter on every falling edge from the Geiger-Müller tube.
-- Every 60 seconds it publishes a JSON measurement to `/geiger00/impulses`, resets the counter, and updates the LCD. Measurements are **clock-aligned** — the firmware waits for the next :00 second boundary after NTP sync before starting its first window, so every reading covers an exact wall-clock minute. The actual MQTT publish is delayed by a random 1–57 s offset each cycle to spread broker load across multiple devices; the timestamp in the message always reflects the measurement time. If a reading is pending when the MQTT connection drops and reconnects, it is published immediately after reconnecting. The LCD is refreshed once per second (throttled to 1 Hz) to avoid unnecessary I²C traffic, and shows a countdown during alignment and the first measurement cycle, then switches to just date/time and CPM/uSv/h once readings are available.
+- On boot, if no WiFi credentials are saved, it opens an access point (`GeigerCounter` / `wifiApPass`) and serves a captive portal.
+- After connecting, it synchronises time via NTP and connects to the MQTT broker.
+- If MQTT connection fails after 12 attempts, the device opens the config portal again.
+- Every 60 seconds it publishes a JSON measurement to `/<device_id>/impulses`, clock-aligned to wall-clock minutes.
 
 **MQTT message format** (published every 60 s):
 ```json
-{"id":"geiger00","ts":"2026-02-24 14:30:00","cpm":42,"usvh":0.2394}
+{"id":"geiger_aabbcc","ts":"2026-02-24 14:30:00","cpm":42,"usvh":0.2394}
 ```
 
 ---
 
-## Auto-provisioning (zero-config MQTT credentials)
+## Device provisioning (auto-provisioning via web UI)
 
-Instead of manually setting unique MQTT credentials on each device and server, you can use **MAC-based auto-provisioning**. Both sides derive the same username and password from the device's MAC address and a shared secret ("pepper").
+v3.0 replaces the manual `add-device.sh` script with web-based provisioning:
 
-**Setup:**
+1. Create a user account on the web dashboard
+2. In **Account** settings, set your MQTT pepper (any string)
+3. Flash the device and enter the same pepper in the WiFiManager portal
+4. In **Devices**, enter your device's WiFi MAC address
+5. The server derives the same MQTT credentials as the firmware and provisions them to Mosquitto automatically (within 5 seconds)
+6. The device connects on next boot
 
-1. Choose a pepper (any string) and set `MQTT_PEPPER=<your-pepper>` in `.env`
-2. Flash the device and open the WiFiManager portal — enter the same pepper in the "MQTT Pepper" field, leave MQTT User and Password at their defaults (`geiger00` / `geiger00PW`)
-3. On the server, register the device:
-   ```bash
-   cd ngnt-geiger-dockerized
-   ./add-device.sh AA:BB:CC:DD:EE:FF   # the device's WiFi MAC address
-   ```
-4. The script prints the derived username and password, adds them to Mosquitto, and persists them in `config/mosquitto/devices.conf`
-5. Restart the broker: `docker restart ngnt-geiger-mosquitto`
-6. The device connects automatically on next boot
-
-**How it works:** The firmware computes `username = geiger_<last 6 hex of MAC>` and `password = first 16 hex chars of HMAC-SHA256(pepper, mac)`. The `add-device.sh` script computes the same values using `openssl`. Derived credentials are never saved to device flash — they're recomputed on every boot.
-
-**Backward compatible:** If the pepper field is left empty, or the user has changed MQTT User/Password away from the defaults, auto-provisioning is skipped entirely and the device uses whatever credentials are configured.
+**How it works:** Both firmware and server compute `username = geiger_<last 6 hex of MAC>` and `password = HMAC-SHA256(pepper, mac)[:16]`. The pepper is stored per-user, so different users can have different peppers.
 
 ---
 
 ## Backend — `ngnt-geiger-dockerized/`
 
-Four Docker containers working together:
+Four Docker containers:
 
 ```
 Geiger counter
-     │  WiFi / MQTT
-     ▼
-┌─────────────────┐        ┌──────────────────┐
-│   Mosquitto     │───────▶│  PM2 + Python    │
-│  MQTT broker    │        │  subscriber      │
-│  :2883          │        └────────┬─────────┘
-└─────────────────┘                 │ INSERT
-                                    ▼
-                           ┌──────────────────┐
-                           │    MariaDB       │
-                           │  :3306 (internal)│
-                           └────────┬─────────┘
-                                    │ SELECT
-                                    ▼
-                           ┌──────────────────┐
-                           │  PHP / Apache    │
-                           │  dashboard :1880 │
-                           └──────────────────┘
+     |  WiFi / MQTT
+     v
++-----------------+        +------------------+
+|   Mosquitto     |------->|  Python          |
+|  MQTT broker    |        |  subscriber      |
+|  :2883          |        +--------+---------+
++-----------------+                 | INSERT
+                                    v
+                           +------------------+
+                           |    MariaDB       |
+                           |  :3306 (internal)|
+                           +--------+---------+
+                                    | SELECT
+                                    v
+                           +------------------+
+                           |  Flask/Gunicorn  |
+                           |  dashboard :1880 |
+                           +------------------+
 ```
 
 ### First-time setup
@@ -195,7 +181,7 @@ git clone https://github.com/phoen-ix/ngnt-geiger-counter.git
 cd ngnt-geiger-counter/ngnt-geiger-dockerized
 
 cp .env.example .env
-# Edit .env — change all passwords before proceeding
+# Edit .env — change all passwords and FLASK_SECRET_KEY before proceeding
 ```
 
 **2. Start the stack**
@@ -203,31 +189,40 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-On first start, MariaDB runs `dbinit.sql` automatically and creates the `measurements`, `devices`, and `settings` tables. The schema uses `IF NOT EXISTS` and `INSERT IGNORE`, so re-running it on an existing database is safe — existing data is not affected.
+On first start:
+- MariaDB runs `dbinit.sql` and creates all tables
+- Flask creates an `admin` user with a random password, printed to stdout and saved to `data/admin_initial_password.txt`
 
-**3. Open the dashboard**
+**3. Get the admin password**
+```bash
+docker compose logs ngnt-geiger-flask | grep Password
+# or
+cat data/admin_initial_password.txt
+```
 
-Navigate to `http://<your-server>:1880` (or whatever port you set for `PHP_APACHE_PORTS`). Use the pill buttons at the top to switch between 1 h, 6 h, 24 h (default), and 7 d time ranges. When multiple devices are reporting, a device dropdown appears to filter by a single device or view all devices combined. Devices are tracked automatically — each device's online/offline status is shown in real time.
+**4. Log in and configure**
 
-**Admin page:** Click "Settings" in the dashboard header (or navigate to `/admin.php`) to configure display timezone, offline timeout, default CPM factor, default alert threshold, and per-device display names and overrides.
+Navigate to `http://<your-server>:1880`, log in as `admin`, and:
+- Change the admin password (Account page) — this deletes `admin_initial_password.txt`
+- Configure SMTP settings (Admin page) if you want password reset emails
+- Adjust global settings (timezone, alert thresholds, etc.)
+
+**5. Register devices**
+
+Create user accounts, set peppers, and register devices via the Devices page. See "Device provisioning" above.
+
+### Dashboard visibility
+
+- **Anonymous visitors** see devices belonging to users with public profiles
+- **Logged-in users** see their own devices plus public devices
+- **Admins** see all devices
 
 ### Reset (wipe all data and start fresh)
 
 ```bash
 docker compose down
-rm -rf volumes/mariadb/* volumes/mosquitto/data/*
-# The * glob leaves .gitkeep files in place
+rm -rf volumes/mariadb/* volumes/mosquitto/data/* data/
 docker compose up -d
-```
-
-### Applying the schema to an existing database
-
-If MariaDB already has data from a previous run, the init script won't fire again. Import manually:
-
-```bash
-docker exec -i ngnt-geiger-mariadb \
-  mariadb -u root -p$(grep MARIADB_ROOT_PASSWORD .env | cut -d= -f2) \
-  ngnt-geigercounter < dbinit.sql
 ```
 
 ### Container overview
@@ -235,9 +230,9 @@ docker exec -i ngnt-geiger-mariadb \
 | Container | Image / Dockerfile | Exposes | Role |
 |-----------|-------------------|---------|------|
 | `ngnt-geiger-mariadb` | `mariadb:11.4.10` | 3306 (internal) | Persistent storage |
-| `ngnt-geiger-mosquitto` | `eclipse-mosquitto:2.1.2-alpine` | 2883 → 1883 | MQTT broker |
-| `ngnt-geiger-subscriber` | `DockerfileSubscriber` (Python 3.13.12-slim) | — | Async MQTT subscriber → DB (batched writes, connection pool) |
-| `ngnt-geiger-php_apache` | `DockerfilePhpApache` (PHP 8.4.18 Apache) | 1880 → 80 | Web dashboard |
+| `ngnt-geiger-mosquitto` | `eclipse-mosquitto:2.1.2-alpine` | 2883 -> 1883 | MQTT broker with auto-reload |
+| `ngnt-geiger-subscriber` | `DockerfileSubscriber` (Python 3.13-slim) | — | Async MQTT subscriber -> DB |
+| `ngnt-geiger-flask` | `DockerfileFlask` (Python 3.13-slim) | 1880 -> 8000 | Flask web dashboard + user management |
 
 All containers share the internal bridge network `172.18.1.0/24` (configurable via `IPV4_NETWORK` in `.env`).
 
@@ -248,5 +243,4 @@ All containers share the internal bridge network `172.18.1.0/24` (configurable v
 - Front plate revision: cutouts for two toggle switches (LCD backlight, speaker mute)
 - Web dashboard: CSV/JSON data export
 - MQTT over TLS (port 8883) for public-facing deployments
-- ~~Support for multiple geiger counter devices on the same backend~~ ✅
 - Grafana integration (MariaDB datasource)

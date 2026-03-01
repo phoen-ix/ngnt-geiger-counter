@@ -2,13 +2,13 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (device management, admin settings page, online/offline tracking)
+Last updated: 2026-03-01 (v3.0 — user accounts, Flask, web-based device provisioning)
 
 ---
 
 ## Project summary
 
-A DIY Geiger counter (hardware + firmware) that ships radiation measurements over MQTT to a self-hosted server stack. The server stores measurements in MariaDB and serves a web dashboard.
+A DIY Geiger counter (hardware + firmware) that ships radiation measurements over MQTT to a self-hosted server stack. The server stores measurements in MariaDB and serves a web dashboard with user accounts and per-user device management.
 
 The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 
@@ -18,22 +18,18 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 
 | Area | Status | Notes |
 |------|--------|-------|
-| Hardware design | ✅ Done | Published on Printables, no planned changes |
-| Firmware v2 (`.ino`) | ✅ Done | WiFi, MQTT, NTP, JSON payload |
-| MQTT broker (Mosquitto) | ✅ Done | Auth, ACL, Docker, entrypoint password generation |
-| DB schema (`dbinit.sql`) | ✅ Done | `measurements`, `devices`, `settings` tables; auto-applied on first start |
-| Python subscriber (`mqtt_bro_impulses.py`) | ✅ Done | Parses JSON, inserts into MariaDB, tracks device status via will/connect messages |
-| PHP web dashboard (`app/index.php`) | ✅ Done | Chart.js, configurable time range, real online/offline status, display names, per-device alert thresholds |
-| Admin settings page (`app/admin.php`) | ✅ Done | Global settings (timezone, timeout, CPM factor, alert threshold) + per-device config |
-| Device management | ✅ Done | Auto-registered on first measurement, online/offline via MQTT will/connect + timeout |
-| `.gitignore` / `.env.example` | ✅ Done | Ready for GitHub |
-| MQTT over TLS | ❌ Not started | See future ideas |
-| Dashboard: configurable time range | ✅ Done | `?range=` GET param (1h/6h/24h/7d) |
-| Dashboard: data export (CSV/JSON) | ❌ Not started | |
-| Auto-provisioning (MAC + pepper) | ✅ Done | Firmware derives credentials from MAC; `add-device.sh` registers on server |
-| Multiple device support | ✅ Done | Dashboard device dropdown, per-device query filtering |
-| Grafana integration | ❌ Not started | |
-| Front plate v2 (switches) | ❌ Not started | Hardware only |
+| Hardware design | Done | Published on Printables, no planned changes |
+| Firmware v2 (`.ino`) | Done | WiFi, MQTT, NTP, JSON payload — unchanged in v3 |
+| MQTT broker (Mosquitto) | Done | Auth, ACL, Docker, entrypoint with background reload watcher |
+| DB schema (`dbinit.sql`) | Done | `users`, `devices`, `password_resets`, `measurements`, `settings` |
+| Python subscriber (`mqtt_bro_impulses.py`) | Done | UPDATE-only device status (devices must be pre-registered) |
+| Flask dashboard (`app/app.py`) | Done | User accounts, device registration, visibility rules |
+| Admin page | Done | Global settings, SMTP config, user management |
+| Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
+| Password reset | Done | Token-based, email via SMTP |
+| MQTT over TLS | Not started | See future ideas |
+| Data export (CSV/JSON) | Not started | |
+| Grafana integration | Not started | |
 
 ---
 
@@ -43,36 +39,34 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 ┌─────────────────────────────────────────────────────────┐
 │                    Physical device                      │
 │                                                         │
-│  RadiationD v1.1    Wemos D1 R2 (ESP8266)   LCD 20×4   │
-│  Geiger-Müller  ──▶  GPIO 12 interrupt  ──▶  I²C       │
+│  RadiationD v1.1    Wemos D1 R2 (ESP8266)   LCD 20x4   │
+│  Geiger-Muller  ──▶  GPIO 12 interrupt  ──▶  I2C       │
 │  tube                                                   │
 └───────────────────────┬─────────────────────────────────┘
                         │  WiFi → MQTT (port 2883)
-                        │  topic: /geiger00/impulses
+                        │  topic: /<device_id>/impulses
                         │  payload: JSON (see Data contract)
                         ▼
 ┌─────────────────────────────────────────────────────────┐
 │               Docker stack  (ngnt-geiger-dockerized/)   │
 │                                                         │
 │  ┌──────────────┐     ┌────────────────┐                │
-│  │  Mosquitto   │────▶│  PM2 + Python  │                │
-│  │  172.18.1.30 │     │  172.18.1.40   │                │
+│  │  Mosquitto   │────▶│  Python        │                │
+│  │  172.18.1.30 │     │  subscriber    │                │
+│  │              │     │  172.18.1.40   │                │
 │  └──────────────┘     └───────┬────────┘                │
-│                               │ INSERT                  │
-│                               ▼                         │
-│                      ┌────────────────┐                 │
-│                      │    MariaDB     │                 │
-│                      │  172.18.1.20   │                 │
-│                      └───────┬────────┘                 │
-│                               │ SELECT (PDO)            │
-│                               ▼                         │
-│                      ┌────────────────┐                 │
-│                      │  PHP / Apache  │                 │
-│                      │  172.18.1.10   │                 │
-│                      │  → host :1880  │                 │
-│                      └────────────────┘                 │
+│         ▲                     │ INSERT                  │
+│         │ .reload flag        ▼                         │
+│         │              ┌────────────────┐               │
+│  ┌──────┴───────┐      │    MariaDB     │               │
+│  │  Flask       │      │  172.18.1.20   │               │
+│  │  172.18.1.10 │◀─────┘                │               │
+│  │  → host:1880 │ SELECT                │               │
+│  └──────────────┘                                       │
 └─────────────────────────────────────────────────────────┘
 ```
+
+Flask writes `devices.conf` and a `.reload` flag when provisioning devices. Mosquitto's entrypoint polls for the flag every 5 seconds and regenerates `passwd.txt` + sends SIGHUP.
 
 ---
 
@@ -80,32 +74,26 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 
 ### MQTT topic
 ```
-/geiger00/impulses
+/<device_id>/impulses
 ```
-The topic prefix is the MQTT username (`mqttUser` in the sketch). The Python subscriber uses the wildcard `/+/impulses` to support multiple devices.
+The topic prefix is the device's MQTT username (e.g. `geiger_aabbcc`). The Python subscriber uses the wildcard `/+/impulses`.
 
-### Message types published to this topic
+### Message types
 
 **Measurement** (every 60 seconds):
 ```json
-{"id":"geiger00","ts":"2026-02-24 14:30:00","cpm":42,"usvh":0.2394}
+{"id":"geiger_aabbcc","ts":"2026-02-24 14:30:00","cpm":42,"usvh":0.2394}
 ```
 
 **Connection notice** (on successful (re)connect):
 ```json
-{"id":"geiger00","status":"connected"}
+{"id":"geiger_aabbcc","status":"connected"}
 ```
 
 **Last will** (sent by broker if device disconnects ungracefully):
 ```json
-{"id":"geiger00","status":"offline"}
+{"id":"geiger_aabbcc","status":"offline"}
 ```
-
-The Python subscriber distinguishes these by the presence of the `cpm` key — only measurement messages are stored in the database.
-
-### `cpm` vs `usvh`
-- `cpm` is the raw count of pulses over the last 60-second window (effectively counts per minute).
-- `usvh` = `cpm × cpmConstant` — the conversion constant defaults to `0.0057` for the RadiationD v1.1 / SBM-20 tube. Other tubes use different constants; the value is configurable via the WiFiManager portal.
 
 ---
 
@@ -113,79 +101,85 @@ The Python subscriber distinguishes these by the presence of the `cpm` key — o
 
 Database name: `ngnt-geigercounter` (configurable via `MARIADB_DATABASE` in `.env`)
 
-```sql
-CREATE TABLE measurements (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  device_id   VARCHAR(50)  NOT NULL,   -- MQTT user (e.g. "geiger00")
-  measured_at DATETIME     NOT NULL,   -- UTC timestamp from the device
-  cpm         INT          NOT NULL,
-  usvh        FLOAT        NOT NULL,
-  created_at  TIMESTAMP    NOT NULL DEFAULT current_timestamp()
-);
+### `users` table
 
--- Index for time-range queries per device
-KEY idx_device_measured (device_id, measured_at)
+```sql
+CREATE TABLE users (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  username      VARCHAR(50)  NOT NULL UNIQUE,
+  email         VARCHAR(255) DEFAULT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role          ENUM('admin','user') NOT NULL DEFAULT 'user',
+  pepper        VARCHAR(64)  DEFAULT NULL,    -- for MQTT credential derivation
+  public        BOOLEAN      NOT NULL DEFAULT FALSE,
+  created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 ```
+
+- `pepper`: shared secret for MAC-based MQTT credential derivation. Set per-user in account settings.
+- `public`: if TRUE, anonymous visitors and other users can see this user's devices on the dashboard.
+- First admin user is auto-created on startup if table is empty.
 
 ### `devices` table
 
 ```sql
 CREATE TABLE devices (
-  device_id       VARCHAR(50)  NOT NULL PRIMARY KEY,
-  display_name    VARCHAR(100) DEFAULT NULL,          -- NULL = show device_id
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  user_id         INT          NOT NULL,
+  device_id       VARCHAR(50)  NOT NULL UNIQUE,   -- MQTT username (geiger_AABBCC)
+  mac_address     VARCHAR(17)  NOT NULL,
+  display_name    VARCHAR(100) DEFAULT NULL,
+  mqtt_password   VARCHAR(64)  NOT NULL,
   status          ENUM('online','offline') NOT NULL DEFAULT 'offline',
-  last_seen       DATETIME     DEFAULT NULL,          -- UTC, updated on measurement + connect
-  cpm_factor      FLOAT        DEFAULT NULL,          -- NULL = use global default
-  alert_threshold FLOAT        DEFAULT NULL,          -- NULL = use global default
-  created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+  last_seen       DATETIME     DEFAULT NULL,
+  cpm_factor      FLOAT        DEFAULT NULL,
+  alert_threshold FLOAT        DEFAULT NULL,
+  provisioned     BOOLEAN      NOT NULL DEFAULT FALSE,
+  created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 ```
 
-Devices are auto-registered by the Python subscriber on first measurement. The `status` field is updated on every measurement (→ online), connect message (→ online), and will message (→ offline). `last_seen` is updated on measurements and connect messages but **not** on will messages (the device was already gone when the broker sent it). NULL values for `cpm_factor` and `alert_threshold` mean "use the global default from the `settings` table."
+- `device_id` stays UNIQUE for subscriber compatibility (it uses `WHERE device_id = %s`).
+- Devices are registered via the web UI, not auto-created by the subscriber.
+- The subscriber only does `UPDATE` (no INSERT) — unregistered devices are ignored.
+- `ON DELETE CASCADE` ensures user deletion cleans up devices.
+
+### `password_resets` table
+
+```sql
+CREATE TABLE password_resets (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT NOT NULL,
+  token      VARCHAR(64) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  used       BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+### `measurements` table
+
+Unchanged from v2.0. Partitioned by `RANGE COLUMNS(measured_at)` with quarterly partitions. No FK to devices — measurements persist even if devices/users are deleted.
 
 ### `settings` table
 
-```sql
-CREATE TABLE settings (
-  `key`   VARCHAR(50)  NOT NULL PRIMARY KEY,
-  `value` VARCHAR(255) NOT NULL
-);
-```
-
-Key-value store for global configuration. Default rows seeded by `dbinit.sql`:
+Key-value store. v3 adds SMTP fields and `site_name`:
 
 | Key | Default | Used by |
 |-----|---------|---------|
-| `display_timezone` | `Europe/Vienna` | Dashboard — all timestamp display |
-| `offline_timeout_minutes` | `5` | Dashboard — fallback offline detection |
-| `default_cpm_factor` | `0.0057` | Admin page — placeholder for per-device fields |
-| `default_alert_threshold` | `0.5` | Dashboard — dose rate card orange threshold |
-
-Editable via the admin page (`/admin.php`). `INSERT IGNORE` in `dbinit.sql` preserves existing values on re-run.
-
-The schema is in `dbinit.sql` and is mounted as `/docker-entrypoint-initdb.d/init.sql` in the MariaDB container — it runs automatically on first start when the data directory is empty.
-
-### Partitioning
-
-The `measurements` table is partitioned by `RANGE COLUMNS(measured_at)` with quarterly partitions. Benefits:
-- Queries with a time-range `WHERE` clause only scan the relevant partition(s).
-- Old partitions can be dropped instantly (`ALTER TABLE measurements DROP PARTITION p2026_q1`) instead of slow row-by-row `DELETE`.
-
-**Partition management is fully automated** — no manual maintenance needed:
-
-- `dbinit.sql` creates the table with only a `p_future` catch-all partition, then defines a stored procedure `ensure_partitions()` and a monthly `EVENT` (`maintain_partitions`) that calls it.
-- `ensure_partitions()` reads `information_schema.PARTITIONS` to find the current highest explicit boundary and keeps adding quarterly partitions (via `REORGANIZE PARTITION p_future`) until there are at least **2 years of headroom** from today. It is safe to call at any time.
-- The event runs on the 1st of every month. On first startup the procedure is called immediately to bootstrap the initial partitions — works correctly regardless of what year the project is deployed.
-- The event scheduler is enabled via `config/mariadb/event-scheduler.cnf` (mounted read-only into the MariaDB container).
-
-To inspect the current partition state:
-```sql
-SELECT PARTITION_NAME, PARTITION_DESCRIPTION, TABLE_ROWS
-FROM information_schema.PARTITIONS
-WHERE TABLE_SCHEMA = 'ngnt-geigercounter' AND TABLE_NAME = 'measurements';
-```
-
-Note: InnoDB requires the partition key to be part of every unique index, so the primary key is `(id, measured_at)` rather than just `(id)`. `id` remains `AUTO_INCREMENT` and behaviour is unchanged from the application's perspective.
+| `display_timezone` | `Europe/Vienna` | Dashboard timestamp display |
+| `offline_timeout_minutes` | `5` | Dashboard offline detection |
+| `default_cpm_factor` | `0.0057` | Admin page placeholder |
+| `default_alert_threshold` | `0.5` | Dashboard dose rate card |
+| `smtp_host` | *(empty)* | Password reset email |
+| `smtp_port` | `587` | Password reset email |
+| `smtp_user` | *(empty)* | Password reset email |
+| `smtp_password` | *(empty)* | Password reset email |
+| `smtp_from` | *(empty)* | Password reset email |
+| `smtp_tls` | `1` | Password reset email |
+| `site_name` | `NGNT Geiger Counter` | Page titles, nav |
 
 ---
 
@@ -193,99 +187,93 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 
 ### `geiger_counter_v2.0.ino`
 
-- Credentials and server address are **hardcoded constants** near the top (Arduino has no env system). They can be kept in sync with `.env` manually, or auto-provisioned via the MAC + pepper mechanism (see below).
-- **Auto-provisioning:** If the "MQTT Pepper" field is set in the WiFiManager portal and the MQTT User/Password are left at their compile-time defaults (`geiger00`/`geiger00PW`), the firmware derives unique credentials from the device's MAC address + pepper using HMAC-SHA256. Derived credentials are never saved to flash — they're computed fresh on every boot.
-- `mqttUser` doubles as the MQTT client ID, the username, and the MQTT topic prefix.
-- `keepAlive` is set to 1200 s (20 min) — intentionally long because the device only publishes once per minute and we don't want reconnect churn.
-- After 12 failed MQTT reconnect attempts, the device opens the WiFiManager config portal (AP mode) so the user can correct settings — it no longer blindly restarts.
-- The `events()` call at the bottom of `loop()` is required by the ezTime library for periodic NTP re-sync.
-- **Timezone**, **CPM conversion factor**, and **dead time** are configurable via the WiFiManager portal (no re-flash needed). Timezone defaults to `Europe/Vienna`; CPM factor defaults to `0.0057` (SBM-20 tube); dead time defaults to `200` µs (SBM-20, use 50–90 for J305). Invalid CPM values (zero, negative, non-numeric) and invalid dead times (zero, negative, > 10000) are silently ignored and the previous value is kept.
-- The ISR (`impulse()`) increments the counter with a configurable dead-time debounce (default 200 µs). This filters signal bounce/ringing on the GPIO pin without losing real pulses.
-- `impulseCounter` is snapshot with `noInterrupts()`/`interrupts()` before use, avoiding race conditions between the ISR and the main loop (consistent CPM/uSv/h values and no lost pulses on reset).
-- **Clock-aligned measurements:** After NTP sync, the firmware waits for the next :00 second boundary before starting its first measurement window. This ensures every published reading covers an exact wall-clock minute. Timing uses `Geiger.minute()` (NTP-derived) instead of `millis()`, so there is no drift. The LCD shows a live countdown during the wait ("Waiting for :00") and during normal operation ("Next reading").
-- **Staggered MQTT publish:** The MQTT message is built at the :00 boundary (capturing the correct timestamp), but the actual publish is delayed by a random 1–57 s offset chosen fresh each cycle. This spreads broker load when multiple devices report simultaneously. The LCD updates immediately with the new reading; only the network send is deferred. If the MQTT connection drops while a publish is pending, the reading is flushed immediately after `reconnect()` succeeds — no data loss on transient disconnections.
-- The MQTT JSON message is built with `snprintf` into a 192-byte stack buffer (`pendingMqttBuf`) instead of `String` concatenation, avoiding heap fragmentation on the ESP8266. The buffer is sized to accommodate long MQTT usernames (up to 31 chars) plus JSON overhead.
-- **LCD 1 Hz throttle:** All LCD row writes are gated behind a `millis()` check (`lastLcdUpdate`) so the display refreshes once per second instead of every loop iteration. This eliminates thousands of redundant I²C transactions per second. The minute-transition block (counter snapshot, MQTT message build, `lcd.clear()` on state change) remains outside the gate for immediate execution. After an `lcd.clear()`, `lastLcdUpdate` is reset to 0 to force an immediate repaint.
-- **Reduced String allocations:** The two `const String` date/time format variables (`dateOrder`, `timestampOrder`) were replaced with a single `const char* lcdDateTimeFmt` and a single `dateTime()` call per LCD update. Combined with the 1 Hz throttle, this reduces heap String allocations from thousands/sec to 1/sec.
-- The device is publish-only — there is no MQTT subscribe or callback.
-- **LCD states:** The 20×4 display shows contextual information for every phase: "Initializing..." during boot, "Syncing time..." during NTP sync, "Waiting for :00" with a countdown after NTP until the first wall-clock minute boundary, "Next reading" countdown during the first measurement cycle, then live date/time and CPM/uSv/h values during normal operation (the countdown is hidden once readings are available). Connection errors show the error code, server address, and retry attempt count. After 12 failed MQTT attempts, the AP portal screen is shown.
+Unchanged in v3.0. See v2.0 handover notes for full details.
 
-### `ngnt-geiger-dockerized/scripts/pm2/mqtt_bro_impulses.py`
+Key points for v3 integration:
+- If pepper is set and MQTT User/Password are at defaults, the firmware derives credentials from MAC + pepper using HMAC-SHA256.
+- The derived `device_id` format is `geiger_<last 6 hex of MAC>`.
+- The server's `helpers.py:derive_mqtt_credentials()` must produce identical results.
 
-- Runs inside the `ngnt-geiger-subscriber` container. Docker's `restart: unless-stopped` handles auto-restart on crash — no process manager needed.
-- All config comes from environment variables passed by docker-compose (`MARIADB_*`, `MQTT_*`, `IPV4_NETWORK`).
-- **Async:** built on `asyncio` with two concurrent coroutines managed by `asyncio.TaskGroup`:
-  - `mqtt_listener` — subscribes to `/+/impulses`, validates each message, pushes a `(device_id, ts, cpm, usvh)` tuple onto an `asyncio.Queue`.
-  - `batch_writer` — drains the queue and flushes to MariaDB using `executemany()`. Flushes when `BATCH_MAX_SIZE` (50 rows) is reached or after `BATCH_MAX_SECONDS` (5 s), whichever comes first.
-- **Connection pool:** `aiomysql.create_pool(minsize=2, maxsize=10)` — created once at startup, shared across all flushes. No per-message connection overhead.
-- **MQTT reconnection:** exponential backoff on `aiomqtt.MqttError` (1 s → 2 s → … → 60 s cap). Resubscribes automatically after reconnect.
-- **DB error handling:** exponential backoff on flush errors (1 s → 2 s → … → 60 s cap), matching the MQTT reconnect pattern. Batch is preserved across retries but capped at 10,000 rows to prevent unbounded memory growth.
-- **Cleanup:** The database connection pool is closed cleanly on shutdown via `try`/`finally`.
-- **Device tracking:** Three message branches — (1) measurement (`cpm` key present): queued for batch insert + upsert device as online with `last_seen = NOW()`; (2) connect message (`status: connected`): upsert device as online with `last_seen = NOW()`; (3) will message (`status: offline`): upsert device as offline **without** updating `last_seen` (the device was already gone). Upsert errors are caught and logged but never block the measurement pipeline. The DB pool is passed to `mqtt_listener` alongside the queue.
+### `app/app.py`
 
-### `ngnt-geiger-dockerized/Dockerfiles/DockerfilePhpApache`
+Single-file Flask app with all routes. Key components:
 
-- Only the `pdo_mysql` extension is installed — it is the only one used by `index.php`. The `mysqli`, `calendar`, and `sockets` extensions were previously installed but are unused and have been removed to keep the image slim.
-- `mod_headers` is enabled and the Apache security config sets `X-Content-Type-Options: nosniff` and `X-Frame-Options: sameorigin`.
-- Uses [mlocati/docker-php-extension-installer](https://github.com/mlocati/docker-php-extension-installer) to install the extension cleanly without manual dependency management.
+**Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random 20-char password, prints to stdout, and saves to `/app/data/admin_initial_password.txt`. The file is deleted when the admin changes their password.
 
-### `ngnt-geiger-dockerized/Dockerfiles/DockerfileSubscriber`
+**Routes:**
 
-- Uses `aiomqtt` (async MQTT client) and `aiomysql` (pure-Python async MySQL/MariaDB driver) — both are pure Python, so no C compiler or `libmariadb` system libraries are needed. The image is a plain `pip install` on top of `python:slim`.
-- Runs as a non-root `subscriber` user inside the container.
-- Previously used `paho-mqtt` + the `mariadb` C extension (requiring `gcc` and `libmariadb-dev` at build time).
+| Route | Auth | Purpose |
+|-------|------|---------|
+| `GET /` | None | Dashboard with visibility rules |
+| `GET/POST /login` | None | Login form |
+| `GET/POST /register` | None | Registration form |
+| `GET /logout` | User | Clear session |
+| `GET/POST /forgot-password` | None | Request password reset email |
+| `GET/POST /reset-password/<token>` | None | Set new password via token |
+| `GET/POST /devices` | User | Device list + add/update/delete |
+| `GET/POST /account` | User | Profile + change password |
+| `GET/POST /admin` | Admin | Settings, SMTP, user management |
 
-### `ngnt-geiger-dockerized/app/index.php`
+**Dashboard visibility:**
+- Anonymous: devices where `users.public = TRUE`
+- Logged-in user: own devices + public devices
+- Admin: all devices
 
-- Single-file PHP dashboard — no framework, no build step.
-- DB credentials come from environment variables set in `docker-compose.yml` for the php_apache service.
-- The page has a `<meta http-equiv="refresh" content="60">` for auto-reload (preserves the selected time range and device).
-- **Time range selector:** pill buttons at the top let the user choose 1h / 6h / 24h (default) / 7d. Selection is passed as `?range=` GET parameter. Invalid values fall back to `24h`. Only hardcoded interval literals from a whitelist reach SQL — no user input is interpolated.
-- **Device selector:** A `<select>` dropdown appears when multiple devices exist in the DB. Selection is passed as `?device=` GET parameter (validated with strict `in_array()` against a `SELECT DISTINCT device_id` result). Defaults to `'all'` (shows combined data from every device). The "all" path uses the original unfiltered queries; the per-device path uses prepared statements with `WHERE device_id = ?`. The dropdown is hidden when only one device exists. The composite index `idx_device_measured (device_id, measured_at)` ensures efficient filtering.
-- Chart.js 4.4.0 loaded from jsDelivr CDN. If deploying offline, download and serve locally.
-- Chart data is embedded as JSON directly in the HTML (PHP → `json_encode`). No separate API endpoint.
-- **Settings from DB:** On load, the dashboard queries the `settings` table for display timezone, offline timeout, and default alert threshold. Falls back to hardcoded defaults if the table doesn't exist yet (try/catch around the query).
-- **Device list from `devices` table:** Replaces the original `SELECT DISTINCT device_id FROM measurements` query. Provides display names, statuses, last-seen timestamps, and per-device alert thresholds. Falls back to the `SELECT DISTINCT` approach if the `devices` table doesn't exist.
-- **Online/offline logic:** Dual check — (1) if `status = 'offline'` in the `devices` table (will message received), device is offline immediately; (2) if `last_seen` is older than `offline_timeout_minutes`, device is offline even if no will arrived yet; (3) otherwise online. The device card shows green/offline with real status instead of a static "online" label.
-- **Display names:** The `deviceLabel()` helper returns `display_name` if set, otherwise falls back to `device_id`. Used in the device card, dropdown, table rows, and header.
-- **Per-device alert threshold:** The dose rate card uses the device's own `alert_threshold` if set, otherwise falls back to the global `default_alert_threshold` from settings.
-- **Settings link:** A "Settings" link in the header navigates to `admin.php`.
-- Database errors are logged to stderr (`error_log()`) with full details; users see only a generic "Could not connect to the database." message.
+**Device registration flow:**
+1. User must have pepper set (redirected to account if not)
+2. Validate MAC format (AA:BB:CC:DD:EE:FF)
+3. Derive MQTT credentials from MAC + pepper
+4. Check for duplicate device_id
+5. INSERT into devices table
+6. Write to `devices.conf` + create `.reload` flag
+7. Mosquitto reload watcher picks it up within 5 seconds
 
-### `ngnt-geiger-dockerized/app/admin.php`
+### `app/helpers.py`
 
-- Single-file PHP admin page — same dark theme as `index.php`, CSS duplicated inline.
-- No authentication. Suitable for trusted/internal networks only.
-- **Global settings form:** Display Timezone, Offline Timeout (minutes), Default CPM Factor, Default Alert Threshold. Saves via `POST action=save_settings` with a whitelist of allowed keys — only known keys are written to the database.
-- **Devices table:** Shows all registered devices with editable Display Name, CPM Factor, and Alert Threshold fields. Status and Last Seen are read-only. Each row is its own form (`POST action=save_device`). Empty fields are stored as NULL, meaning the device reverts to the global default. Input placeholders show the current global default values.
-- Green banner on successful save. "Back to Dashboard" link in header.
+- `get_db()`: returns a PyMySQL connection (per-request, synchronous)
+- `get_settings()`: loads all settings from DB
+- `login_required`, `admin_required`: decorators checking `session['user_id']` / `session['role']`
+- `derive_mqtt_credentials(mac, pepper)`: HMAC-SHA256 credential derivation matching firmware
+- `provision_device()` / `unprovision_device()`: manage `devices.conf` with file locking (`fcntl.flock`) and `.reload` flag
+- `send_password_reset_email()`: SMTP using settings from DB
 
-### `ngnt-geiger-dockerized/add-device.sh`
+### `app/templates/`
 
-- Server-side helper script for MAC-based auto-provisioning.
-- Takes a MAC address (e.g. `AA:BB:CC:DD:EE:FF`), reads `MQTT_PEPPER` from `.env`, and computes the same username/password that the firmware derives.
-- Persists credentials to `config/mosquitto/devices.conf` (survives container restarts) and adds them to the running Mosquitto via `docker exec mosquitto_passwd`.
-- `devices.conf` is bind-mounted into the container and re-read by `docker-entrypoint.sh` on every start.
+9 Jinja2 templates extending `base.html`:
+- `base.html` — skeleton with nav (conditional on auth state), flash messages
+- `login.html`, `register.html`, `forgot_password.html`, `reset_password.html` — auth forms
+- `dashboard.html` — range bar, device dropdown, cards, Chart.js chart, measurements table
+- `devices.html` — device list + add form
+- `account.html` — profile + change password
+- `admin.html` — global settings, SMTP settings, user management table
 
-### `ngnt-geiger-dockerized/scripts/mosquitto/docker-entrypoint.sh`
+### `app/static/style.css`
 
-- Mounted at `/docker-entrypoint.sh` inside the container, overriding the official eclipse-mosquitto entrypoint.
-- Runs `mosquitto_passwd -b` to (re)generate `config/mosquitto/passwd.txt` from the `MQTT_*` env vars on every container start.
-- This means you can change MQTT passwords by editing `.env` and restarting the container — no manual `mosquitto_passwd` commands needed.
-- Also re-provisions any auto-provisioned devices listed in `config/mosquitto/devices.conf`.
+Extracted from inline CSS in the former `index.php`/`admin.php`. Dark theme with consistent variables.
 
-### `ngnt-geiger-dockerized/config/mosquitto/passwd.txt`
+### `scripts/pm2/mqtt_bro_impulses.py`
 
-- Committed to git (bcrypt hashes of the **default** passwords from `.env.example`).
-- Overwritten on every container start by the entrypoint script.
-- Required as a pre-existing file for the Docker bind-mount to work correctly; without it Docker would create a directory at that path.
+Changed from v2.0:
+- `upsert_device()` renamed to `update_device_status()` — uses plain `UPDATE ... WHERE device_id = %s` instead of `INSERT ... ON DUPLICATE KEY UPDATE`
+- Returns `bool` indicating if the device exists (rowcount > 0)
+- Measurement branch checks the return value — unregistered devices are skipped with a warning log
 
-### `ngnt-geiger-dockerized/volumes/`
+### `scripts/mosquitto/docker-entrypoint.sh`
 
-- Contains only **runtime data** — MariaDB files and Mosquitto persistence.
-- Safe to delete for a reset: `rm -rf volumes/mariadb/* volumes/mosquitto/data/*`
-  - The `*` glob in bash does not match dotfiles, so `.gitkeep` files survive.
-- The PHP app source is in `app/` (not `volumes/`) precisely so it is not wiped on reset.
+Enhanced from v2.0:
+- Removed `MQTT_GEIGER_USER`/`MQTT_GEIGER_USERPW` provisioning (devices now come from `devices.conf` only)
+- `rebuild_passwd()` function creates `passwd.txt` from scratch (`-c` flag for first entry, then `-b` for subsequent)
+- Starts Mosquitto as a background process (can't use `exec "$@"` because the watcher needs to run)
+- Background reload watcher: polls every 5 seconds for `.reload` flag, calls `rebuild_passwd()` + SIGHUP
+- Signal forwarding: traps SIGTERM/SIGINT and forwards to Mosquitto PID
+
+### `Dockerfiles/DockerfileFlask`
+
+Python 3.13-slim + pip install of Flask, PyMySQL, Gunicorn. Runs Gunicorn with 2 workers on port 8000.
+
+### `Dockerfiles/DockerfileSubscriber`
+
+Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 
 ---
 
@@ -293,13 +281,14 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 
 | Secret | Location | Notes |
 |--------|----------|-------|
-| All server-side credentials | `.env` (gitignored) | Template in `.env.example` |
-| MQTT server address + credentials | `geiger_counter_v2.0.ino` lines 56–59 | Manual sync, or use auto-provisioning |
-| MQTT pepper (auto-provisioning) | `.env` (`MQTT_PEPPER`) + device portal | Same value on both sides |
-| Auto-provisioned device passwords | `config/mosquitto/devices.conf` (gitignored) | Plaintext, generated by `add-device.sh` |
-| WiFi AP password | `geiger_counter_v2.0.ino` line 51 | Only used during initial WiFi setup |
+| Server-side credentials | `.env` (gitignored) | Template in `.env.example` |
+| Flask secret key | `.env` (`FLASK_SECRET_KEY`) | Used for session signing |
+| Initial admin password | stdout + `data/admin_initial_password.txt` | Deleted on password change |
+| MQTT pepper | Per-user in DB (`users.pepper`) + device portal | Same value on both sides |
+| Device MQTT passwords | `config/mosquitto/devices.conf` (gitignored) + DB | Managed by Flask provisioning |
+| SMTP password | DB `settings` table | Configured in admin UI |
 
-**Never commit `.env`.** It is in `.gitignore`. Only `.env.example` is tracked.
+**Never commit `.env`.** It is in `.gitignore`.
 
 ---
 
@@ -309,30 +298,36 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 |-------|---------|
 | `mariadb` | 11.4.10 |
 | `eclipse-mosquitto` | 2.1.2-alpine |
-| `php` (Apache) | 8.4.18 |
-| `python` (subscriber) | 3.13.12-slim |
+| `python` (Flask) | 3.13-slim |
+| `python` (subscriber) | 3.13-slim |
 
 ---
 
 ## Known issues / limitations
 
-1. **No TLS on MQTT** — The broker listens on plain TCP port 1883 (exposed as 2883). Credentials are sent in the clear over WiFi. Acceptable on a trusted home network; not suitable for public internet exposure without adding TLS.
+1. **No TLS on MQTT** — The broker listens on plain TCP. Credentials are sent in the clear over WiFi. Acceptable on a trusted home network.
 
-2. **MariaDB major version upgrade (10.11 → 11.4)** — If upgrading an existing deployment with data in `volumes/mariadb/`, take a `mysqldump` backup before restarting. The official MariaDB Docker image runs `mariadb-upgrade` automatically on first start, but a backup is strongly recommended. Fresh installs are unaffected.
+2. **No rate limiting** — Login, registration, and password reset endpoints have no rate limiting. Add a reverse proxy (nginx, Caddy) with rate limiting for public-facing deployments.
 
+3. **Synchronous DB in Flask** — PyMySQL is synchronous; each request blocks a Gunicorn worker during DB queries. With 2 workers this is fine for small deployments. For higher load, increase workers or switch to an async framework.
+
+4. **Pepper stored in plaintext** — The user's pepper is stored as plaintext in the DB because it needs to be used for credential derivation. The MQTT password (derived from pepper + MAC) is also stored in plaintext in `devices.conf`. This is acceptable because Mosquitto needs the plaintext to generate its own password file.
 
 ---
 
-## Suggested next steps (in rough priority order)
+## Suggested next steps
 
-### 1. Dashboard: CSV export
-Add a simple `export.php` that runs `SELECT * FROM measurements ORDER BY measured_at DESC` and outputs `Content-Type: text/csv`.
+### 1. CSV/JSON data export
+Add a `/export` route that streams measurements as CSV with appropriate `Content-Disposition` header.
 
 ### 2. MQTT over TLS
-Generate a self-signed cert (or use Let's Encrypt). Add a second listener block to `mosquitto.conf` on port 8883 with `cafile`, `certfile`, `keyfile`. Update the sketch to use WiFiClientSecure and load the CA cert.
+Add a second Mosquitto listener on port 8883 with TLS certificates. Update the firmware to use `WiFiClientSecure`.
 
 ### 3. Grafana integration
-MariaDB can be used directly as a Grafana data source. Add a `grafana` service to `docker-compose.yml`, mount a provisioning config pointing at MariaDB, and provision a dashboard JSON.
+Add a `grafana` service to `docker-compose.yml` with MariaDB as a data source.
+
+### 4. Rate limiting
+Add Flask-Limiter or deploy behind a reverse proxy with rate limiting for public deployments.
 
 ---
 
@@ -345,18 +340,24 @@ docker exec -it ngnt-geiger-mosquitto \
   -u pythonUSR -P <MQTT_PYTHON_USERPW> -t '#' -v
 ```
 
+**Tailing the Flask logs:**
+```bash
+docker logs -f ngnt-geiger-flask
+```
+
 **Tailing the Python subscriber logs:**
 ```bash
 docker logs -f ngnt-geiger-subscriber
 ```
 
-**Inserting a test measurement manually (no hardware needed):**
+**Inserting a test measurement manually:**
+First register a device via the web UI, then:
 ```bash
 docker exec -it ngnt-geiger-mosquitto \
   mosquitto_pub -h localhost -p 1883 \
-  -u geiger00 -P <MQTT_GEIGER_USERPW> \
-  -t /geiger00/impulses \
-  -m '{"id":"geiger00","ts":"2026-02-24 12:00:00","cpm":15,"usvh":0.0855}'
+  -u <device_id> -P <mqtt_password> \
+  -t /<device_id>/impulses \
+  -m '{"id":"<device_id>","ts":"2026-03-01 12:00:00","cpm":15,"usvh":0.0855}'
 ```
 
 **Connecting to MariaDB directly:**
@@ -365,37 +366,10 @@ docker exec -it ngnt-geiger-mariadb \
   mariadb -u mariadb_usr -p ngnt-geigercounter
 ```
 
-**Updating the GitHub release after changes:**
-
-The `v2.0` tag and release body must both be updated manually after pushing changes:
-
-```bash
-# 1. Move the tag to the latest commit
-git tag -f v2.0 HEAD
-git push --force origin v2.0
-
-# 2. Find the release ID (the /releases/tags/ endpoint breaks after a force-pushed tag)
-TOKEN=$(git remote get-url origin | sed 's|https://[^:]*:\(.*\)@github.com.*|\1|')
-RELEASE_ID=$(curl -s -H "Authorization: token $TOKEN" \
-  "https://api.github.com/repos/phoen-ix/ngnt-geiger-counter/releases" \
-  | python3 -c "import sys,json; print(next(r['id'] for r in json.load(sys.stdin) if r['tag_name']=='v2.0'))")
-
-# 3. Update the release body using the numeric release ID
-curl -s -X PATCH \
-  -H "Authorization: token $TOKEN" \
-  -H "Content-Type: application/json" \
-  "https://api.github.com/repos/phoen-ix/ngnt-geiger-counter/releases/$RELEASE_ID" \
-  -d '{"tag_name": "v2.0", "body": "…updated release notes…"}'
-```
-
-**Important:** After `git push --force` moves a tag, the GitHub API endpoint `/releases/tags/v2.0` returns 404 until the release object is re-associated with the new tag. Use the `/releases` list endpoint to find the numeric release ID, then PATCH by ID. The `tag_name` field in the PATCH body re-links the release to the moved tag.
-
-Both steps are needed — the API call updates the text but does **not** move the tag. Without `git tag -f` + `git push --force origin v2.0`, the release page keeps pointing at the old commit and shows a stale timestamp.
-
 **Full reset:**
 ```bash
 cd ngnt-geiger-dockerized
 docker compose down
-rm -rf volumes/mariadb/* volumes/mosquitto/data/*
+rm -rf volumes/mariadb/* volumes/mosquitto/data/* data/
 docker compose up -d
 ```

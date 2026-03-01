@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ site_name }}{% endblock %}
+{% block head %}
+    <meta http-equiv="refresh" content="60;url=?range={{ range }}{{ device_qs }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block header_sub %}
+<p>
+    {% if latest %}
+        Last reading: <strong>{{ latest['measured_at_local'] }}</strong>
+        {% if device == 'all' %}
+            &mdash; device: {{ device_label(latest['device_id']) }}
+        {% endif %}
+        &bull; page auto-refreshes every 60&thinsp;s
+    {% else %}
+        Waiting for first measurement &bull; page auto-refreshes every 60&thinsp;s
+    {% endif %}
+</p>
+{% endblock %}
+
+{% block content %}
+
+<div class="range-bar">
+    {% for key, opt in range_options.items() %}
+        <a href="?range={{ key }}{{ device_qs }}"{% if key == range %} class="active"{% endif %}>{{ opt[1] }}</a>
+    {% endfor %}
+</div>
+
+{% if visible_devices|length > 1 %}
+<div class="range-bar" style="margin-top:-16px;">
+    <form method="get" style="display:flex;align-items:center;gap:8px;">
+        <input type="hidden" name="range" value="{{ range }}">
+        <label for="device-select" style="font-size:0.8rem;color:#8b949e;">Device:</label>
+        <select name="device" id="device-select" class="device-select" onchange="this.form.submit()">
+            <option value="all"{% if device == 'all' %} selected{% endif %}>All devices</option>
+            {% for dev in visible_devices %}
+                <option value="{{ dev['device_id'] }}"{% if device == dev['device_id'] %} selected{% endif %}>{{ device_label(dev['device_id']) }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+{% endif %}
+
+<div class="cards">
+    <div class="card">
+        <div class="card-label">CPM</div>
+        <div class="card-value">{{ latest['cpm']|int if latest else '&mdash;'|safe }}</div>
+        <div class="card-unit">counts per minute</div>
+    </div>
+    <div class="card">
+        <div class="card-label">Dose rate</div>
+        <div class="card-value {{ 'orange' if latest and latest['usvh']|float > active_alert else '' }}">
+            {{ '%.4f'|format(latest['usvh']|float) if latest else '&mdash;'|safe }}
+        </div>
+        <div class="card-unit">&mu;Sv/h</div>
+    </div>
+    {% if latest %}
+    <div class="card">
+        <div class="card-label">Device</div>
+        {% set show_dev = latest['device_id'] if device == 'all' else device %}
+        <div class="card-value {{ 'green' if device_online.get(show_dev) else 'orange' }}" style="font-size:1rem;padding-top:6px;">
+            {{ device_label(show_dev) }}
+        </div>
+        <div class="card-unit">
+            {{ 'online' if device_online.get(show_dev) else 'offline' }}
+        </div>
+    </div>
+    {% endif %}
+    {% if recent %}
+    <div class="card">
+        <div class="card-label">Readings stored</div>
+        <div class="card-value" style="color:#c9d1d9;">{{ '100+' if recent|length >= 100 else recent|length }}</div>
+        <div class="card-unit">last 100 shown below</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="section">
+    <h2>{{ range_label }}</h2>
+    {% if not chart_data %}
+        <p class="no-data">No data available for the {{ range_label|lower }}.</p>
+    {% else %}
+        <canvas id="chart"></canvas>
+    {% endif %}
+</div>
+
+<div class="section">
+    <h2>Recent measurements &mdash; {{ range_label|lower }}</h2>
+    {% if not recent %}
+        <p class="no-data">No measurements recorded yet.</p>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>CPM</th>
+                <th>&mu;Sv/h</th>
+                <th>Device</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in recent %}
+            <tr>
+                <td>{{ row['measured_at_local'] }}</td>
+                <td>{{ row['cpm']|int }}</td>
+                <td>{{ '%.4f'|format(row['usvh']|float) }}</td>
+                <td>{{ device_label(row['device_id']) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+{% if chart_data %}
+<script>
+const labels  = {{ chart_labels|tojson }};
+const cpmData  = {{ chart_cpm|tojson }};
+const usvhData = {{ chart_usvh|tojson }};
+
+new Chart(document.getElementById('chart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [
+            {
+                label: 'CPM',
+                data: cpmData,
+                borderColor: '#58a6ff',
+                backgroundColor: 'rgba(88,166,255,0.08)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+                yAxisID: 'yCpm'
+            },
+            {
+                label: '\u03bcSv/h',
+                data: usvhData,
+                borderColor: '#3fb950',
+                backgroundColor: 'rgba(63,185,80,0.0)',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 2,
+                yAxisID: 'yUsvh'
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                labels: { color: '#8b949e', boxWidth: 12 }
+            },
+            tooltip: {
+                backgroundColor: '#161b22',
+                borderColor: '#30363d',
+                borderWidth: 1,
+                titleColor: '#c9d1d9',
+                bodyColor: '#8b949e'
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#6e7681', maxTicksLimit: 10, maxRotation: 40, font: { size: 11 } },
+                grid:  { color: '#21262d' }
+            },
+            yCpm: {
+                type: 'linear',
+                position: 'left',
+                ticks: { color: '#58a6ff', font: { size: 11 } },
+                grid:  { color: '#21262d' },
+                title: { display: true, text: 'CPM', color: '#58a6ff', font: { size: 11 } }
+            },
+            yUsvh: {
+                type: 'linear',
+                position: 'right',
+                ticks: { color: '#3fb950', font: { size: 11 } },
+                grid:  { drawOnChartArea: false },
+                title: { display: true, text: '\u03bcSv/h', color: '#3fb950', font: { size: 11 } }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+
+{% endblock %}

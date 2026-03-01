@@ -1,10 +1,59 @@
--- ngnt-geiger-counter — initial schema
+-- ngnt-geiger-counter v3.0 — schema
 -- MariaDB 11.4+  |  charset: utf8mb4  |  engine: InnoDB
 
 CREATE DATABASE /*!32312 IF NOT EXISTS*/ `ngnt-geigercounter`
   /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */;
 
 USE `ngnt-geigercounter`;
+
+
+-- ── users ─────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS `users` (
+  `id`            INT AUTO_INCREMENT PRIMARY KEY,
+  `username`      VARCHAR(50)  NOT NULL UNIQUE,
+  `email`         VARCHAR(255) DEFAULT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `role`          ENUM('admin','user') NOT NULL DEFAULT 'user',
+  `pepper`        VARCHAR(64)  DEFAULT NULL,
+  `public`        BOOLEAN      NOT NULL DEFAULT FALSE,
+  `created_at`    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+-- ── devices ───────────────────────────────────────────────────────────────────
+-- Tracks every Geiger counter registered by a user.  Status is updated by
+-- the Python subscriber on measurement, connect, and will (offline) messages.
+
+CREATE TABLE IF NOT EXISTS `devices` (
+  `id`              INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id`         INT          NOT NULL,
+  `device_id`       VARCHAR(50)  NOT NULL UNIQUE COMMENT 'MQTT username (geiger_AABBCC)',
+  `mac_address`     VARCHAR(17)  NOT NULL,
+  `display_name`    VARCHAR(100) DEFAULT NULL,
+  `mqtt_password`   VARCHAR(64)  NOT NULL,
+  `status`          ENUM('online','offline') NOT NULL DEFAULT 'offline',
+  `last_seen`       DATETIME     DEFAULT NULL,
+  `cpm_factor`      FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
+  `alert_threshold` FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
+  `provisioned`     BOOLEAN      NOT NULL DEFAULT FALSE,
+  `created_at`      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+-- ── password_resets ───────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS `password_resets` (
+  `id`         INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id`    INT NOT NULL,
+  `token`      VARCHAR(64) NOT NULL UNIQUE,
+  `expires_at` DATETIME NOT NULL,
+  `used`       BOOLEAN NOT NULL DEFAULT FALSE,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 
 -- ── measurements ─────────────────────────────────────────────────────────────
 -- Partitioned by measured_at (quarterly RANGE COLUMNS).
@@ -95,22 +144,7 @@ DELIMITER ;
 CALL ensure_partitions();
 
 
--- ── devices ─────────────────────────────────────────────────────────────────
--- Tracks every Geiger counter that has ever connected.  Status is updated by
--- the Python subscriber on measurement, connect, and will (offline) messages.
-
-CREATE TABLE IF NOT EXISTS `devices` (
-  `device_id`       VARCHAR(50)  NOT NULL PRIMARY KEY,
-  `display_name`    VARCHAR(100) DEFAULT NULL,
-  `status`          ENUM('online','offline') NOT NULL DEFAULT 'offline',
-  `last_seen`       DATETIME     DEFAULT NULL,
-  `cpm_factor`      FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
-  `alert_threshold` FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
-  `created_at`      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-
--- ── settings ────────────────────────────────────────────────────────────────
+-- ── settings ──────────────────────────────────────────────────────────────────
 -- Key-value store for global dashboard / system settings.
 -- INSERT IGNORE preserves existing values on re-run.
 
@@ -123,4 +157,11 @@ INSERT IGNORE INTO `settings` (`key`, `value`) VALUES
   ('offline_timeout_minutes', '5'),
   ('display_timezone',        'Europe/Vienna'),
   ('default_cpm_factor',      '0.0057'),
-  ('default_alert_threshold', '0.5');
+  ('default_alert_threshold', '0.5'),
+  ('smtp_host',               ''),
+  ('smtp_port',               '587'),
+  ('smtp_user',               ''),
+  ('smtp_password',           ''),
+  ('smtp_from',               ''),
+  ('smtp_tls',                '1'),
+  ('site_name',               'NGNT Geiger Counter');

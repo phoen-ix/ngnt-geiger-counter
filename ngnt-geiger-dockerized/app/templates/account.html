@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Account — {{ site_name }}{% endblock %}
+
+{% block content %}
+
+<!-- ── Profile ────────────────────────────────────────────────────────────── -->
+<div class="section">
+    <h2>Profile</h2>
+    <form method="post">
+        <input type="hidden" name="action" value="update_profile">
+        <div class="form-row">
+            <label>Username</label>
+            <input type="text" value="{{ user['username'] }}" disabled style="opacity:0.5;">
+        </div>
+        <div class="form-row">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" value="{{ user['email'] or '' }}">
+        </div>
+        <div class="form-row">
+            <label for="pepper">MQTT Pepper</label>
+            <input type="text" id="pepper" name="pepper" value="{{ user['pepper'] or '' }}"
+                   placeholder="Shared secret for device provisioning">
+        </div>
+        <div class="form-row">
+            <label for="public">Public profile</label>
+            <select id="public" name="public" style="width:260px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;padding:6px 12px;font-size:0.85rem;">
+                <option value="0"{% if not user['public'] %} selected{% endif %}>Private &mdash; only you see your devices</option>
+                <option value="1"{% if user['public'] %} selected{% endif %}>Public &mdash; anyone can see your devices</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label>&nbsp;</label>
+            <button type="submit" class="btn">Save Profile</button>
+        </div>
+    </form>
+</div>
+
+<!-- ── Change password ────────────────────────────────────────────────────── -->
+<div class="section">
+    <h2>Change Password</h2>
+    <form method="post">
+        <input type="hidden" name="action" value="change_password">
+        <div class="form-row">
+            <label for="current_password">Current password</label>
+            <input type="password" id="current_password" name="current_password" required>
+        </div>
+        <div class="form-row">
+            <label for="new_password">New password</label>
+            <input type="password" id="new_password" name="new_password" required>
+        </div>
+        <div class="form-row">
+            <label for="new_password2">Confirm new password</label>
+            <input type="password" id="new_password2" name="new_password2" required>
+        </div>
+        <div class="form-row">
+            <label>&nbsp;</label>
+            <button type="submit" class="btn">Change Password</button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Login — {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="auth-form">
+    <div class="section">
+        <h2>Login</h2>
+        <form method="post">
+            <div class="form-row">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required autofocus>
+            </div>
+            <div class="form-row">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn">Login</button>
+        </form>
+        <p><a href="{{ url_for('forgot_password') }}">Forgot password?</a></p>
+        <p>No account? <a href="{{ url_for('register') }}">Register</a></p>
+    </div>
+</div>
+{% endblock %}

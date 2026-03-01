@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ site_name }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<header>
+    <div>
+        <h1>&#9762; {{ site_name }}</h1>
+        {% block header_sub %}{% endblock %}
+    </div>
+    <nav>
+        <a href="{{ url_for('dashboard') }}"{% if request.endpoint == 'dashboard' %} class="active"{% endif %}>Dashboard</a>
+        {% if session.get('user_id') %}
+            <a href="{{ url_for('devices') }}"{% if request.endpoint == 'devices' %} class="active"{% endif %}>Devices</a>
+            <a href="{{ url_for('account') }}"{% if request.endpoint == 'account' %} class="active"{% endif %}>Account</a>
+            {% if session.get('role') == 'admin' %}
+                <a href="{{ url_for('admin') }}"{% if request.endpoint == 'admin' %} class="active"{% endif %}>Admin</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+            <a href="{{ url_for('login') }}"{% if request.endpoint == 'login' %} class="active"{% endif %}>Login</a>
+            <a href="{{ url_for('register') }}"{% if request.endpoint == 'register' %} class="active"{% endif %}>Register</a>
+        {% endif %}
+    </nav>
+</header>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+        <div class="{{ category }}">{{ message }}</div>
+    {% endfor %}
+{% endwith %}
+
+{% block content %}{% endblock %}
+
+</body>
+</html>

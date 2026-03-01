@@ -1,27 +1,29 @@
 services:
-    ngnt-geiger-php_apache:
+    ngnt-geiger-flask:
         build:
             context: .
-            dockerfile: ./Dockerfiles/DockerfilePhpApache
-        container_name: ngnt-geiger-php_apache
+            dockerfile: ./Dockerfiles/DockerfileFlask
+        container_name: ngnt-geiger-flask
         restart: unless-stopped
         ports:
-            - ${PHP_APACHE_PORTS}
+            - ${FLASK_PORTS}
         environment:
             MARIADB_USER: ${MARIADB_USER}
             MARIADB_PASSWORD: ${MARIADB_PASSWORD}
             MARIADB_DATABASE: ${MARIADB_DATABASE}
+            FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
+            MOSQUITTO_CONFIG_DIR: /app/mosquitto-config
         volumes:
-            - ./app:/var/www/html
-            - ./config/php_apache/security.conf:/etc/apache2/conf-available/security.conf:ro
-            - ./config/php_apache/apache2.conf:/etc/apache2/apache2.conf:ro
+            - ./app:/app
+            - ./config/mosquitto:/app/mosquitto-config
+            - ./data:/app/data
         depends_on:
             - ngnt-geiger-mariadb
         networks:
             ngnt-geiger-network:
                 ipv4_address: ${IPV4_NETWORK}.10
                 aliases:
-                    - php_apache
+                    - flask
 
     ngnt-geiger-mariadb:
         image: mariadb:${DOCKER_IMAGE_MARIADB_TAG}
@@ -54,8 +56,6 @@ services:
         environment:
           MQTT_PYTHON_USER: ${MQTT_PYTHON_USER}
           MQTT_PYTHON_USERPW: ${MQTT_PYTHON_USERPW}
-          MQTT_GEIGER_USER: ${MQTT_GEIGER_USER}
-          MQTT_GEIGER_USERPW: ${MQTT_GEIGER_USERPW}
         volumes:
             - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
             - ./config/mosquitto/acls:/mosquitto/config/acls:ro

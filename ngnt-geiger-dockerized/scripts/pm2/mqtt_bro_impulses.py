@@ -24,24 +24,26 @@ BATCH_MAX_SIZE    = 50    # flush after this many rows
 BATCH_MAX_SECONDS = 5.0   # or after this many seconds, whichever comes first
 
 
-# ── Device upsert ─────────────────────────────────────────────────────────────
-async def upsert_device(pool: aiomysql.Pool, device_id: str, status: str,
-                        update_last_seen: bool = True) -> None:
+# ── Device status update ─────────────────────────────────────────────────────
+async def update_device_status(pool: aiomysql.Pool, device_id: str, status: str,
+                               update_last_seen: bool = True) -> bool:
     if update_last_seen:
-        sql = ("INSERT INTO devices (device_id, status, last_seen) VALUES (%s, %s, NOW()) "
-               "ON DUPLICATE KEY UPDATE status = VALUES(status), last_seen = NOW()")
+        sql = ("UPDATE devices SET status = %s, last_seen = NOW() "
+               "WHERE device_id = %s")
     else:
-        sql = ("INSERT INTO devices (device_id, status) VALUES (%s, %s) "
-               "ON DUPLICATE KEY UPDATE status = VALUES(status)")
+        sql = ("UPDATE devices SET status = %s "
+               "WHERE device_id = %s")
     try:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(sql, (device_id, status))
+                await cur.execute(sql, (status, device_id))
+                return cur.rowcount > 0
     except Exception as e:
-        print(f"[device] upsert error for {device_id}: {e}")
+        print(f"[device] update error for {device_id}: {e}")
+        return False
 
 
-# ── DB writer ─────────────────────────────────────────────────────────────────
+# ── DB writer ─────────────────────────────────────────────────────────────
 async def flush(pool: aiomysql.Pool, batch: list) -> None:
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -128,19 +130,23 @@ async def mqtt_listener(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
                             print(f"[mqtt] missing fields, skipping: {msg}")
                             continue
 
+                        exists = await update_device_status(pool, device_id, 'online', update_last_seen=True)
+                        if not exists:
+                            print(f"[mqtt] unregistered device {device_id}, skipping measurement")
+                            continue
+
                         await queue.put((device_id, ts, int(cpm), float(usvh)))
                         print(f"[mqtt] queued: device={device_id} ts={ts} cpm={cpm} usvh={usvh}")
-                        await upsert_device(pool, device_id, 'online', update_last_seen=True)
 
                     # Branch 2: connection notice
                     elif msg.get('status') == 'connected':
                         print(f"[mqtt] device connected: {device_id}")
-                        await upsert_device(pool, device_id, 'online', update_last_seen=True)
+                        await update_device_status(pool, device_id, 'online', update_last_seen=True)
 
                     # Branch 3: last will (offline)
                     elif msg.get('status') == 'offline':
                         print(f"[mqtt] device offline: {device_id}")
-                        await upsert_device(pool, device_id, 'offline', update_last_seen=False)
+                        await update_device_status(pool, device_id, 'offline', update_last_seen=False)
 
         except aiomqtt.MqttError as e:
             print(f"[mqtt] connection lost: {e} — reconnecting in {reconnect_interval}s")
