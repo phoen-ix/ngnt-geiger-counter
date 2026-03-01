@@ -3,3 +3,4 @@ flask-wtf
 flask-limiter
 pymysql
 gunicorn
+pytest
