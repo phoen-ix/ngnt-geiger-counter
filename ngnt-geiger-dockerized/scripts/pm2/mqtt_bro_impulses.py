@@ -118,19 +118,31 @@ async def mqtt_listener(queue: asyncio.Queue) -> None:
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+async def create_pool() -> aiomysql.Pool:
+    interval = 1
+    while True:
+        try:
+            pool = await aiomysql.create_pool(
+                host=DB_HOST,
+                port=DB_PORT,
+                user=DB_USER,
+                password=DB_PASS,
+                db=DB_NAME,
+                charset='utf8mb4',
+                autocommit=True,
+                minsize=2,
+                maxsize=10,
+            )
+            print(f"[db] pool ready — {DB_HOST}:{DB_PORT}/{DB_NAME} (min=2, max=10)")
+            return pool
+        except Exception as e:
+            print(f"[db] connect failed: {e} — retrying in {interval}s")
+            await asyncio.sleep(interval)
+            interval = min(interval * 2, 60)
+
+
 async def main() -> None:
-    pool = await aiomysql.create_pool(
-        host=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASS,
-        db=DB_NAME,
-        charset='utf8mb4',
-        autocommit=True,
-        minsize=2,
-        maxsize=10,
-    )
-    print(f"[db] pool ready — {DB_HOST}:{DB_PORT}/{DB_NAME} (min=2, max=10)")
+    pool = await create_pool()
 
     try:
         queue: asyncio.Queue = asyncio.Queue()
