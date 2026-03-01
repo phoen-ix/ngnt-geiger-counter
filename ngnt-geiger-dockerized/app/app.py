@@ -2,10 +2,13 @@ import os
 import re
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import (Flask, flash, redirect, render_template, request, session,
                    url_for)
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from helpers import (admin_required, derive_mqtt_credentials, get_db,
@@ -14,6 +17,8 @@ from helpers import (admin_required, derive_mqtt_credentials, get_db,
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-me')
+csrf = CSRFProtect(app)
+limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
 
 # ── Template context ─────────────────────────────────────────────────────────
@@ -38,6 +43,10 @@ def refresh_session():
                 cur.execute("SELECT pw_version, role FROM users WHERE id = %s",
                             (session['user_id'],))
                 user = cur.fetchone()
+                # Apply session timeout from settings
+                cur.execute("SELECT `value` FROM settings WHERE `key` = 'session_timeout_minutes'")
+                row = cur.fetchone()
+                timeout = int(row['value']) if row else 1440
         finally:
             db.close()
         if not user:
@@ -48,6 +57,8 @@ def refresh_session():
             return
         session['role'] = user['role']
         session['pw_version'] = user['pw_version']
+        session.permanent = True
+        app.permanent_session_lifetime = timedelta(minutes=timeout)
     except Exception:
         pass
 
@@ -123,6 +134,7 @@ def is_device_online(device: dict, offline_timeout: int) -> bool:
 # ── Auth routes ──────────────────────────────────────────────────────────────
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10/minute", methods=["POST"])
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -133,6 +145,7 @@ def login():
             user = cur.fetchone()
         db.close()
         if user and check_password_hash(user['password_hash'], password):
+            session.permanent = True
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['role'] = user['role']
@@ -144,6 +157,7 @@ def login():
 
 
 @app.route('/register', methods=['GET', 'POST'])
+@limiter.limit("5/minute", methods=["POST"])
 def register():
     db = get_db()
     try:
@@ -197,6 +211,7 @@ def logout():
 
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
+@limiter.limit("5/minute", methods=["POST"])
 def forgot_password():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -554,6 +569,7 @@ def account():
 SETTINGS_KEYS = [
     'base_url', 'display_timezone', 'offline_timeout_minutes',
     'default_cpm_factor', 'default_alert_threshold', 'registration_enabled',
+    'session_timeout_minutes',
 ]
 SMTP_KEYS = [
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_tls',

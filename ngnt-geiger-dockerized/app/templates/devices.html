@@ -12,6 +12,7 @@
         </p>
     {% else %}
     <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="add_device">
         <div class="form-row">
             <label for="mac">MAC Address</label>
@@ -56,6 +57,7 @@
                 <td>{{ dev['device_id'] }}</td>
                 <td>
                     <form method="post" style="display:flex;gap:6px;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="update_device">
                         <input type="hidden" name="device_db_id" value="{{ dev['id'] }}">
                         <input type="text" name="display_name" value="{{ dev['display_name'] or '' }}" placeholder="{{ dev['device_id'] }}">
@@ -70,6 +72,7 @@
                 <td>{{ 'Yes' if dev['provisioned'] else 'Pending' }}</td>
                 <td>
                     <form method="post" onsubmit="return confirm('Delete this device? This will also remove it from Mosquitto.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="delete_device">
                         <input type="hidden" name="device_db_id" value="{{ dev['id'] }}">
                         <button type="submit" class="btn-sm btn-danger">Delete</button>

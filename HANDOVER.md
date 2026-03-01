@@ -183,6 +183,7 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 | `smtp_from` | *(empty)* | Password reset email |
 | `smtp_tls` | `1` | Password reset email |
 | `registration_enabled` | `1` | Register route (open/disabled) |
+| `session_timeout_minutes` | `1440` | Session cookie lifetime (admin-configurable) |
 
 ---
 
@@ -201,7 +202,11 @@ Key points for v3 integration:
 
 Single-file Flask app with all routes. Key components:
 
-**Session security (`before_request`):** On every authenticated request, queries `pw_version` and `role` from the DB. If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login.
+**CSRF protection:** All POST forms include a `csrf_token` hidden field. Flask-WTF's `CSRFProtect` validates every POST request automatically.
+
+**Rate limiting:** Flask-Limiter protects auth endpoints — login (10/min), register (5/min), forgot-password (5/min). Uses in-memory storage (per-worker). No default limits on other routes.
+
+**Session security (`before_request`):** On every authenticated request, queries `pw_version` and `role` from the DB. If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login. Session timeout is loaded from the `session_timeout_minutes` setting and applied via `app.permanent_session_lifetime`.
 
 **Input validation:** Usernames restricted to `[a-zA-Z0-9_-]` (3-50 chars). User-controlled strings in JS contexts use `|tojson` filter to prevent XSS. Invalid `display_timezone` values fall back to UTC instead of crashing.
 
@@ -276,7 +281,7 @@ Enhanced from v2.0:
 
 ### `Dockerfiles/DockerfileFlask`
 
-Python 3.13-slim + pip install of Flask, PyMySQL, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker.
+Python 3.13-slim + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker.
 
 ### `Dockerfiles/DockerfileSubscriber`
 
@@ -315,11 +320,11 @@ Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 
 1. **No TLS on MQTT** — The broker listens on plain TCP. Credentials are sent in the clear over WiFi. Acceptable on a trusted home network.
 
-2. **No rate limiting** — Login, registration, and password reset endpoints have no rate limiting. Add a reverse proxy (nginx, Caddy) with rate limiting for public-facing deployments.
+2. **Synchronous DB in Flask** — PyMySQL is synchronous; each request blocks a Gunicorn worker during DB queries. With 2 workers this is fine for small deployments. For higher load, increase workers or switch to an async framework.
 
-3. **Synchronous DB in Flask** — PyMySQL is synchronous; each request blocks a Gunicorn worker during DB queries. With 2 workers this is fine for small deployments. For higher load, increase workers or switch to an async framework.
+3. **Pepper stored in plaintext** — The user's pepper is stored as plaintext in the DB because it needs to be used for credential derivation. The MQTT password (derived from pepper + MAC) is also stored in plaintext in `devices.conf`. This is acceptable because Mosquitto needs the plaintext to generate its own password file.
 
-4. **Pepper stored in plaintext** — The user's pepper is stored as plaintext in the DB because it needs to be used for credential derivation. The MQTT password (derived from pepper + MAC) is also stored in plaintext in `devices.conf`. This is acceptable because Mosquitto needs the plaintext to generate its own password file.
+4. **In-memory rate limiting** — Flask-Limiter uses in-memory storage, so limits are per Gunicorn worker and reset on restart. For stricter enforcement, configure a shared backend (Redis/Memcached) or use a reverse proxy.
 
 ---
 
@@ -333,9 +338,6 @@ Add a second Mosquitto listener on port 8883 with TLS certificates. Update the f
 
 ### 3. Grafana integration
 Add a `grafana` service to `docker-compose.yml` with MariaDB as a data source.
-
-### 4. Rate limiting
-Add Flask-Limiter or deploy behind a reverse proxy with rate limiting for public deployments.
 
 ---
 

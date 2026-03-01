@@ -7,6 +7,7 @@
 <div class="section">
     <h2>Profile</h2>
     <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="update_profile">
         <div class="form-row">
             <label>Username</label>
@@ -39,6 +40,7 @@
 <div class="section">
     <h2>Change Password</h2>
     <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="change_password">
         <div class="form-row">
             <label for="current_password">Current password</label>

@@ -166,4 +166,5 @@ INSERT IGNORE INTO `settings` (`key`, `value`) VALUES
   ('smtp_from',               ''),
   ('smtp_tls',                '1'),
   ('base_url',                ''),
-  ('registration_enabled',    '1');
+  ('registration_enabled',    '1'),
+  ('session_timeout_minutes', '1440');
