@@ -1,11 +1,23 @@
 <?php
 // Timezone used for display only. Measurements are stored as UTC in the DB.
-define('DISPLAY_TZ', 'Europe/Vienna');
+// Overwritten from settings table after DB connection.
+$display_tz      = 'Europe/Vienna';
+$offline_timeout = 5;
+$default_alert   = 0.5;
 
 function utcToLocal(string $utc): string {
+    global $display_tz;
     return (new DateTime($utc, new DateTimeZone('UTC')))
-        ->setTimezone(new DateTimeZone(DISPLAY_TZ))
+        ->setTimezone(new DateTimeZone($display_tz))
         ->format('Y-m-d H:i:s');
+}
+
+function isDeviceOnline(string $device_id, array $statuses, array $lastseen, int $timeout): bool {
+    if (($statuses[$device_id] ?? 'offline') === 'offline') return false;
+    $last = $lastseen[$device_id] ?? null;
+    if (!$last) return false;
+    $age_min = (time() - strtotime($last . ' UTC')) / 60;
+    return $age_min <= $timeout;
 }
 
 // Time-range options: key → [SQL interval literal, human label]
@@ -25,13 +37,17 @@ $db_name = getenv('MARIADB_DATABASE') ?: 'ngnt-geigercounter';
 $db_user = getenv('MARIADB_USER');
 $db_pass = getenv('MARIADB_PASSWORD');
 
-$db_error   = null;
-$latest     = null;
-$chart_data = [];
-$recent     = [];
-$devices    = [];
-$device     = 'all';
-$device_qs  = '';
+$db_error        = null;
+$latest          = null;
+$chart_data      = [];
+$recent          = [];
+$devices         = [];
+$device          = 'all';
+$device_qs       = '';
+$device_names    = [];
+$device_statuses = [];
+$device_lastseen = [];
+$device_alerts   = [];
 
 try {
     $pdo = new PDO(
@@ -41,9 +57,34 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    $devices = $pdo->query(
-        "SELECT DISTINCT device_id FROM measurements ORDER BY device_id"
-    )->fetchAll(PDO::FETCH_COLUMN);
+    // Load global settings (fail-safe: keep defaults if table doesn't exist yet)
+    try {
+        $settings = $pdo->query("SELECT `key`, `value` FROM settings")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $display_tz      = $settings['display_timezone']        ?? $display_tz;
+        $offline_timeout = (int)($settings['offline_timeout_minutes'] ?? $offline_timeout);
+        $default_alert   = (float)($settings['default_alert_threshold'] ?? $default_alert);
+    } catch (PDOException $e) {
+        // settings table doesn't exist yet — use hardcoded defaults
+    }
+
+    // Load device list from devices table (fall back to SELECT DISTINCT)
+    $has_devices_table = false;
+    try {
+        $device_rows = $pdo->query(
+            "SELECT device_id, display_name, status, last_seen, alert_threshold FROM devices ORDER BY device_id"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $has_devices_table = true;
+        $devices         = array_column($device_rows, 'device_id');
+        $device_names    = array_column($device_rows, 'display_name', 'device_id');
+        $device_statuses = array_column($device_rows, 'status', 'device_id');
+        $device_lastseen = array_column($device_rows, 'last_seen', 'device_id');
+        $device_alerts   = array_column($device_rows, 'alert_threshold', 'device_id');
+    } catch (PDOException $e) {
+        // devices table doesn't exist yet — fall back
+        $devices = $pdo->query(
+            "SELECT DISTINCT device_id FROM measurements ORDER BY device_id"
+        )->fetchAll(PDO::FETCH_COLUMN);
+    }
 
     $device = in_array($device_param, $devices, true) ? $device_param : 'all';
     $device_qs = ($device !== 'all') ? '&device=' . urlencode($device) : '';
@@ -97,9 +138,26 @@ try {
     $db_error = 'Could not connect to the database.';
 }
 
+// Determine alert threshold for the currently selected device
+$active_alert = $default_alert;
+if ($device !== 'all' && isset($device_alerts[$device]) && $device_alerts[$device] !== null) {
+    $active_alert = (float)$device_alerts[$device];
+} elseif ($device === 'all' && $latest) {
+    $lid = $latest['device_id'];
+    if (isset($device_alerts[$lid]) && $device_alerts[$lid] !== null) {
+        $active_alert = (float)$device_alerts[$lid];
+    }
+}
+
 $chart_labels = array_map(fn($r) => utcToLocal($r['measured_at']), $chart_data);
 $chart_cpm    = array_map(fn($r) => (int)$r['cpm'],    $chart_data);
 $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
+
+// Helper: get display label for a device
+function deviceLabel(string $id, array $names): string {
+    $name = $names[$id] ?? null;
+    return ($name !== null && $name !== '') ? $name : $id;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -118,7 +176,8 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
             padding: 24px 32px;
             min-height: 100vh;
         }
-        header { margin-bottom: 28px; }
+        header { margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start; }
+        header div { flex: 1; }
         header h1 {
             font-size: 1.4rem;
             font-weight: 700;
@@ -130,6 +189,17 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
             color: #6e7681;
             margin-top: 4px;
         }
+        .settings-link {
+            font-size: 0.8rem;
+            color: #8b949e;
+            text-decoration: none;
+            border: 1px solid #30363d;
+            padding: 5px 12px;
+            border-radius: 6px;
+            white-space: nowrap;
+            margin-top: 2px;
+        }
+        .settings-link:hover { border-color: #58a6ff; color: #58a6ff; }
         .error {
             background: #2d1b1b;
             border: 1px solid #5a2020;
@@ -245,18 +315,21 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
 <body>
 
 <header>
-    <h1>&#9762; NGNT Geiger Counter</h1>
-    <p>
-        <?php if ($latest): ?>
-            Last reading: <strong><?= htmlspecialchars(utcToLocal($latest['measured_at'])) ?></strong>
-            <?php if ($device === 'all'): ?>
-                &mdash; device: <?= htmlspecialchars($latest['device_id']) ?>
+    <div>
+        <h1>&#9762; NGNT Geiger Counter</h1>
+        <p>
+            <?php if ($latest): ?>
+                Last reading: <strong><?= htmlspecialchars(utcToLocal($latest['measured_at'])) ?></strong>
+                <?php if ($device === 'all'): ?>
+                    &mdash; device: <?= htmlspecialchars(deviceLabel($latest['device_id'], $device_names)) ?>
+                <?php endif; ?>
+                &bull; page auto-refreshes every 60&thinsp;s
+            <?php else: ?>
+                Waiting for first measurement &bull; page auto-refreshes every 60&thinsp;s
             <?php endif; ?>
-            &bull; page auto-refreshes every 60&thinsp;s
-        <?php else: ?>
-            Waiting for first measurement &bull; page auto-refreshes every 60&thinsp;s
-        <?php endif; ?>
-    </p>
+        </p>
+    </div>
+    <a href="admin.php" class="settings-link">Settings</a>
 </header>
 
 <div class="range-bar">
@@ -274,7 +347,7 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
             style="background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:20px;padding:6px 16px;font-size:0.8rem;font-weight:600;cursor:pointer;">
             <option value="all"<?= $device === 'all' ? ' selected' : '' ?>>All devices</option>
             <?php foreach ($devices as $dev): ?>
-                <option value="<?= htmlspecialchars($dev) ?>"<?= $device === $dev ? ' selected' : '' ?>><?= htmlspecialchars($dev) ?></option>
+                <option value="<?= htmlspecialchars($dev) ?>"<?= $device === $dev ? ' selected' : '' ?>><?= htmlspecialchars(deviceLabel($dev, $device_names)) ?></option>
             <?php endforeach; ?>
         </select>
     </form>
@@ -293,7 +366,7 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
     </div>
     <div class="card">
         <div class="card-label">Dose rate</div>
-        <div class="card-value <?= ($latest && (float)$latest['usvh'] > 0.5) ? 'orange' : '' ?>">
+        <div class="card-value <?= ($latest && (float)$latest['usvh'] > $active_alert) ? 'orange' : '' ?>">
             <?= $latest ? number_format((float)$latest['usvh'], 4) : '&mdash;' ?>
         </div>
         <div class="card-unit">&mu;Sv/h</div>
@@ -301,13 +374,17 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
     <?php if ($latest): ?>
     <div class="card">
         <div class="card-label">Device</div>
-        <div class="card-value green" style="font-size:1rem;padding-top:6px;">
-            <?= $device === 'all' ? 'online' : htmlspecialchars($device) ?>
+        <?php
+            $show_device_id = ($device === 'all') ? $latest['device_id'] : $device;
+            $is_online = isDeviceOnline($show_device_id, $device_statuses, $device_lastseen, $offline_timeout);
+            $status_class = $is_online ? 'green' : 'orange';
+            $status_text  = $is_online ? 'online' : 'offline';
+        ?>
+        <div class="card-value <?= $status_class ?>" style="font-size:1rem;padding-top:6px;">
+            <?= htmlspecialchars(deviceLabel($show_device_id, $device_names)) ?>
         </div>
         <div class="card-unit">
-            <?= $device === 'all'
-                ? htmlspecialchars($latest['device_id']) . ' (latest)'
-                : 'online' ?>
+            <?= $status_text ?>
         </div>
     </div>
     <?php endif; ?>
@@ -349,7 +426,7 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
                 <td><?= htmlspecialchars(utcToLocal($row['measured_at'])) ?></td>
                 <td><?= (int)$row['cpm'] ?></td>
                 <td><?= number_format((float)$row['usvh'], 4) ?></td>
-                <td><?= htmlspecialchars($row['device_id']) ?></td>
+                <td><?= htmlspecialchars(deviceLabel($row['device_id'], $device_names)) ?></td>
             </tr>
             <?php endforeach; ?>
         </tbody>

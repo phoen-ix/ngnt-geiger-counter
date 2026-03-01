@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (LCD 1 Hz throttle, pending MQTT flush on reconnect, reduced heap allocs)
+Last updated: 2026-03-01 (device management, admin settings page, online/offline tracking)
 
 ---
 
@@ -21,9 +21,11 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Hardware design | ✅ Done | Published on Printables, no planned changes |
 | Firmware v2 (`.ino`) | ✅ Done | WiFi, MQTT, NTP, JSON payload |
 | MQTT broker (Mosquitto) | ✅ Done | Auth, ACL, Docker, entrypoint password generation |
-| DB schema (`dbinit.sql`) | ✅ Done | `measurements` table, auto-applied on first start |
-| Python subscriber (`mqtt_bro_impulses.py`) | ✅ Done | Parses JSON, inserts into MariaDB |
-| PHP web dashboard (`app/index.php`) | ✅ Done | Chart.js, configurable time range (1h/6h/24h/7d), table of recent readings |
+| DB schema (`dbinit.sql`) | ✅ Done | `measurements`, `devices`, `settings` tables; auto-applied on first start |
+| Python subscriber (`mqtt_bro_impulses.py`) | ✅ Done | Parses JSON, inserts into MariaDB, tracks device status via will/connect messages |
+| PHP web dashboard (`app/index.php`) | ✅ Done | Chart.js, configurable time range, real online/offline status, display names, per-device alert thresholds |
+| Admin settings page (`app/admin.php`) | ✅ Done | Global settings (timezone, timeout, CPM factor, alert threshold) + per-device config |
+| Device management | ✅ Done | Auto-registered on first measurement, online/offline via MQTT will/connect + timeout |
 | `.gitignore` / `.env.example` | ✅ Done | Ready for GitHub |
 | MQTT over TLS | ❌ Not started | See future ideas |
 | Dashboard: configurable time range | ✅ Done | `?range=` GET param (1h/6h/24h/7d) |
@@ -125,6 +127,42 @@ CREATE TABLE measurements (
 KEY idx_device_measured (device_id, measured_at)
 ```
 
+### `devices` table
+
+```sql
+CREATE TABLE devices (
+  device_id       VARCHAR(50)  NOT NULL PRIMARY KEY,
+  display_name    VARCHAR(100) DEFAULT NULL,          -- NULL = show device_id
+  status          ENUM('online','offline') NOT NULL DEFAULT 'offline',
+  last_seen       DATETIME     DEFAULT NULL,          -- UTC, updated on measurement + connect
+  cpm_factor      FLOAT        DEFAULT NULL,          -- NULL = use global default
+  alert_threshold FLOAT        DEFAULT NULL,          -- NULL = use global default
+  created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Devices are auto-registered by the Python subscriber on first measurement. The `status` field is updated on every measurement (→ online), connect message (→ online), and will message (→ offline). `last_seen` is updated on measurements and connect messages but **not** on will messages (the device was already gone when the broker sent it). NULL values for `cpm_factor` and `alert_threshold` mean "use the global default from the `settings` table."
+
+### `settings` table
+
+```sql
+CREATE TABLE settings (
+  `key`   VARCHAR(50)  NOT NULL PRIMARY KEY,
+  `value` VARCHAR(255) NOT NULL
+);
+```
+
+Key-value store for global configuration. Default rows seeded by `dbinit.sql`:
+
+| Key | Default | Used by |
+|-----|---------|---------|
+| `display_timezone` | `Europe/Vienna` | Dashboard — all timestamp display |
+| `offline_timeout_minutes` | `5` | Dashboard — fallback offline detection |
+| `default_cpm_factor` | `0.0057` | Admin page — placeholder for per-device fields |
+| `default_alert_threshold` | `0.5` | Dashboard — dose rate card orange threshold |
+
+Editable via the admin page (`/admin.php`). `INSERT IGNORE` in `dbinit.sql` preserves existing values on re-run.
+
 The schema is in `dbinit.sql` and is mounted as `/docker-entrypoint-initdb.d/init.sql` in the MariaDB container — it runs automatically on first start when the data directory is empty.
 
 ### Partitioning
@@ -183,7 +221,7 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - **MQTT reconnection:** exponential backoff on `aiomqtt.MqttError` (1 s → 2 s → … → 60 s cap). Resubscribes automatically after reconnect.
 - **DB error handling:** exponential backoff on flush errors (1 s → 2 s → … → 60 s cap), matching the MQTT reconnect pattern. Batch is preserved across retries but capped at 10,000 rows to prevent unbounded memory growth.
 - **Cleanup:** The database connection pool is closed cleanly on shutdown via `try`/`finally`.
-- Silently skips messages without a `cpm` field (connection/will messages).
+- **Device tracking:** Three message branches — (1) measurement (`cpm` key present): queued for batch insert + upsert device as online with `last_seen = NOW()`; (2) connect message (`status: connected`): upsert device as online with `last_seen = NOW()`; (3) will message (`status: offline`): upsert device as offline **without** updating `last_seen` (the device was already gone). Upsert errors are caught and logged but never block the measurement pipeline. The DB pool is passed to `mqtt_listener` alongside the queue.
 
 ### `ngnt-geiger-dockerized/Dockerfiles/DockerfilePhpApache`
 
@@ -206,8 +244,21 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - **Device selector:** A `<select>` dropdown appears when multiple devices exist in the DB. Selection is passed as `?device=` GET parameter (validated with strict `in_array()` against a `SELECT DISTINCT device_id` result). Defaults to `'all'` (shows combined data from every device). The "all" path uses the original unfiltered queries; the per-device path uses prepared statements with `WHERE device_id = ?`. The dropdown is hidden when only one device exists. The composite index `idx_device_measured (device_id, measured_at)` ensures efficient filtering.
 - Chart.js 4.4.0 loaded from jsDelivr CDN. If deploying offline, download and serve locally.
 - Chart data is embedded as JSON directly in the HTML (PHP → `json_encode`). No separate API endpoint.
-- The dose rate card turns orange when uSv/h > 0.5 (roughly 5× typical background).
+- **Settings from DB:** On load, the dashboard queries the `settings` table for display timezone, offline timeout, and default alert threshold. Falls back to hardcoded defaults if the table doesn't exist yet (try/catch around the query).
+- **Device list from `devices` table:** Replaces the original `SELECT DISTINCT device_id FROM measurements` query. Provides display names, statuses, last-seen timestamps, and per-device alert thresholds. Falls back to the `SELECT DISTINCT` approach if the `devices` table doesn't exist.
+- **Online/offline logic:** Dual check — (1) if `status = 'offline'` in the `devices` table (will message received), device is offline immediately; (2) if `last_seen` is older than `offline_timeout_minutes`, device is offline even if no will arrived yet; (3) otherwise online. The device card shows green/offline with real status instead of a static "online" label.
+- **Display names:** The `deviceLabel()` helper returns `display_name` if set, otherwise falls back to `device_id`. Used in the device card, dropdown, table rows, and header.
+- **Per-device alert threshold:** The dose rate card uses the device's own `alert_threshold` if set, otherwise falls back to the global `default_alert_threshold` from settings.
+- **Settings link:** A "Settings" link in the header navigates to `admin.php`.
 - Database errors are logged to stderr (`error_log()`) with full details; users see only a generic "Could not connect to the database." message.
+
+### `ngnt-geiger-dockerized/app/admin.php`
+
+- Single-file PHP admin page — same dark theme as `index.php`, CSS duplicated inline.
+- No authentication. Suitable for trusted/internal networks only.
+- **Global settings form:** Display Timezone, Offline Timeout (minutes), Default CPM Factor, Default Alert Threshold. Saves via `POST action=save_settings` with a whitelist of allowed keys — only known keys are written to the database.
+- **Devices table:** Shows all registered devices with editable Display Name, CPM Factor, and Alert Threshold fields. Status and Last Seen are read-only. Each row is its own form (`POST action=save_device`). Empty fields are stored as NULL, meaning the device reverts to the global default. Input placeholders show the current global default values.
+- Green banner on successful save. "Back to Dashboard" link in header.
 
 ### `ngnt-geiger-dockerized/add-device.sh`
 

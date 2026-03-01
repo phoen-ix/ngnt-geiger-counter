@@ -24,6 +24,23 @@ BATCH_MAX_SIZE    = 50    # flush after this many rows
 BATCH_MAX_SECONDS = 5.0   # or after this many seconds, whichever comes first
 
 
+# ── Device upsert ─────────────────────────────────────────────────────────────
+async def upsert_device(pool: aiomysql.Pool, device_id: str, status: str,
+                        update_last_seen: bool = True) -> None:
+    if update_last_seen:
+        sql = ("INSERT INTO devices (device_id, status, last_seen) VALUES (%s, %s, NOW()) "
+               "ON DUPLICATE KEY UPDATE status = VALUES(status), last_seen = NOW()")
+    else:
+        sql = ("INSERT INTO devices (device_id, status) VALUES (%s, %s) "
+               "ON DUPLICATE KEY UPDATE status = VALUES(status)")
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (device_id, status))
+    except Exception as e:
+        print(f"[device] upsert error for {device_id}: {e}")
+
+
 # ── DB writer ─────────────────────────────────────────────────────────────────
 async def flush(pool: aiomysql.Pool, batch: list) -> None:
     async with pool.acquire() as conn:
@@ -75,7 +92,7 @@ async def batch_writer(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
 
 
 # ── MQTT listener ─────────────────────────────────────────────────────────────
-async def mqtt_listener(queue: asyncio.Queue) -> None:
+async def mqtt_listener(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
     reconnect_interval = 1
     while True:
         try:
@@ -96,20 +113,34 @@ async def mqtt_listener(queue: asyncio.Queue) -> None:
                         print(f"[mqtt] bad payload, skipping: {message.payload!r}")
                         continue
 
-                    if not isinstance(msg, dict) or 'cpm' not in msg:
+                    if not isinstance(msg, dict):
                         continue
 
                     device_id = msg.get('id', 'unknown')
-                    ts        = msg.get('ts')
-                    cpm       = msg.get('cpm')
-                    usvh      = msg.get('usvh')
 
-                    if ts is None or cpm is None or usvh is None:
-                        print(f"[mqtt] missing fields, skipping: {msg}")
-                        continue
+                    # Branch 1: measurement (has cpm key)
+                    if 'cpm' in msg:
+                        ts   = msg.get('ts')
+                        cpm  = msg.get('cpm')
+                        usvh = msg.get('usvh')
 
-                    await queue.put((device_id, ts, int(cpm), float(usvh)))
-                    print(f"[mqtt] queued: device={device_id} ts={ts} cpm={cpm} usvh={usvh}")
+                        if ts is None or cpm is None or usvh is None:
+                            print(f"[mqtt] missing fields, skipping: {msg}")
+                            continue
+
+                        await queue.put((device_id, ts, int(cpm), float(usvh)))
+                        print(f"[mqtt] queued: device={device_id} ts={ts} cpm={cpm} usvh={usvh}")
+                        await upsert_device(pool, device_id, 'online', update_last_seen=True)
+
+                    # Branch 2: connection notice
+                    elif msg.get('status') == 'connected':
+                        print(f"[mqtt] device connected: {device_id}")
+                        await upsert_device(pool, device_id, 'online', update_last_seen=True)
+
+                    # Branch 3: last will (offline)
+                    elif msg.get('status') == 'offline':
+                        print(f"[mqtt] device offline: {device_id}")
+                        await upsert_device(pool, device_id, 'offline', update_last_seen=False)
 
         except aiomqtt.MqttError as e:
             print(f"[mqtt] connection lost: {e} — reconnecting in {reconnect_interval}s")
@@ -149,7 +180,7 @@ async def main() -> None:
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(batch_writer(pool, queue))
-            tg.create_task(mqtt_listener(queue))
+            tg.create_task(mqtt_listener(pool, queue))
     finally:
         pool.close()
         await pool.wait_closed()

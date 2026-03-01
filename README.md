@@ -14,7 +14,8 @@ ngnt-geiger-counter/
 └── ngnt-geiger-dockerized/
     ├── add-device.sh                # Register a device via MAC-based auto-provisioning
     ├── app/                         # PHP web dashboard source
-    │   └── index.php
+    │   ├── index.php
+    │   └── admin.php            # Admin settings page
     ├── dbinit.sql                   # DB schema — auto-applied on first start
     ├── config/                      # Static config for Mosquitto & Apache
     ├── docker-compose.yml
@@ -202,11 +203,13 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-On first start, MariaDB runs `dbinit.sql` automatically and creates the `measurements` table.
+On first start, MariaDB runs `dbinit.sql` automatically and creates the `measurements`, `devices`, and `settings` tables. The schema uses `IF NOT EXISTS` and `INSERT IGNORE`, so re-running it on an existing database is safe — existing data is not affected.
 
 **3. Open the dashboard**
 
-Navigate to `http://<your-server>:1880` (or whatever port you set for `PHP_APACHE_PORTS`). Use the pill buttons at the top to switch between 1 h, 6 h, 24 h (default), and 7 d time ranges. When multiple devices are reporting, a device dropdown appears to filter by a single device or view all devices combined.
+Navigate to `http://<your-server>:1880` (or whatever port you set for `PHP_APACHE_PORTS`). Use the pill buttons at the top to switch between 1 h, 6 h, 24 h (default), and 7 d time ranges. When multiple devices are reporting, a device dropdown appears to filter by a single device or view all devices combined. Devices are tracked automatically — each device's online/offline status is shown in real time.
+
+**Admin page:** Click "Settings" in the dashboard header (or navigate to `/admin.php`) to configure display timezone, offline timeout, default CPM factor, default alert threshold, and per-device display names and overrides.
 
 ### Reset (wipe all data and start fresh)
 

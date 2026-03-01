@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS `measurements` (
 
 DELIMITER //
 
-CREATE PROCEDURE ensure_partitions()
+CREATE OR REPLACE PROCEDURE ensure_partitions()
 BEGIN
   DECLARE v_max_date DATE;
   DECLARE v_new_end  DATE;
@@ -86,3 +86,34 @@ DELIMITER ;
 
 -- Bootstrap: create initial partitions immediately on first start.
 CALL ensure_partitions();
+
+
+-- ── devices ─────────────────────────────────────────────────────────────────
+-- Tracks every Geiger counter that has ever connected.  Status is updated by
+-- the Python subscriber on measurement, connect, and will (offline) messages.
+
+CREATE TABLE IF NOT EXISTS `devices` (
+  `device_id`       VARCHAR(50)  NOT NULL PRIMARY KEY,
+  `display_name`    VARCHAR(100) DEFAULT NULL,
+  `status`          ENUM('online','offline') NOT NULL DEFAULT 'offline',
+  `last_seen`       DATETIME     DEFAULT NULL,
+  `cpm_factor`      FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
+  `alert_threshold` FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
+  `created_at`      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+-- ── settings ────────────────────────────────────────────────────────────────
+-- Key-value store for global dashboard / system settings.
+-- INSERT IGNORE preserves existing values on re-run.
+
+CREATE TABLE IF NOT EXISTS `settings` (
+  `key`   VARCHAR(50)  NOT NULL PRIMARY KEY,
+  `value` VARCHAR(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+INSERT IGNORE INTO `settings` (`key`, `value`) VALUES
+  ('offline_timeout_minutes', '5'),
+  ('display_timezone',        'Europe/Vienna'),
+  ('default_cpm_factor',      '0.0057'),
+  ('default_alert_threshold', '0.5');
