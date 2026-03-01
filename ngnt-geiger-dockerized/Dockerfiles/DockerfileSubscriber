@@ -1,5 +1,8 @@
 FROM python:3.13.12-slim
 
-RUN pip install --no-cache-dir aiomqtt aiomysql
+RUN pip install --no-cache-dir aiomqtt aiomysql && \
+    useradd -r -s /usr/sbin/nologin subscriber
+
+USER subscriber
 
 CMD ["python3", "/opt/scripts/mqtt_bro_impulses.py"]

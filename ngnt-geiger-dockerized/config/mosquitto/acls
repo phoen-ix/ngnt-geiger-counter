@@ -2,4 +2,4 @@ pattern write /%u/impulses
 pattern write /%u/connection
 
 user pythonUSR
-topic readwrite #
+topic read /+/impulses

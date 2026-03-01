@@ -39,7 +39,8 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 int  retryCounter      = 0;
 const int connectionAttempts = 12;
 
-const float cpmConstant = 0.0057;
+char  cfgCpmFactor[10] = "0.0057";
+float cpmConstant      = 0.0057;
 const int   geigerPin   = 12;
 volatile unsigned long impulseCounter;
 unsigned long previousMillis;
@@ -67,13 +68,18 @@ String mqttWillMessage;
 String mqttConnectedMessage;
 
 // ── Localisation ─────────────────────────────────────────────────────────
-const String localTimezone  = "Europe/Vienna";
+char cfgTimezone[40] = "Europe/Vienna";
 const String dateOrder      = "d.m.y";
 const String timestampOrder = "H:i:s";
 const bool   showCountdown  = false;
 
 
 // ── Config helpers ────────────────────────────────────────────────────────
+
+int validPort(const char* s) {
+  int p = atoi(s);
+  return (p >= 1 && p <= 65535) ? p : 1883;
+}
 
 void buildMqttStrings() {
   mqttTopic            = String("/") + cfgMqttUser + "/impulses";
@@ -116,6 +122,10 @@ void loadConfig() {
   strlcpy(cfgMqttUser,   doc["mqttUser"]   | cfgMqttUser,   sizeof(cfgMqttUser));
   strlcpy(cfgMqttUserPw, doc["mqttUserPw"] | cfgMqttUserPw, sizeof(cfgMqttUserPw));
   strlcpy(cfgMqttPepper, doc["mqttPepper"] | cfgMqttPepper, sizeof(cfgMqttPepper));
+  strlcpy(cfgTimezone,   doc["timezone"]   | cfgTimezone,   sizeof(cfgTimezone));
+  strlcpy(cfgCpmFactor,  doc["cpmFactor"]  | cfgCpmFactor,  sizeof(cfgCpmFactor));
+  float parsed = atof(cfgCpmFactor);
+  if (parsed > 0) cpmConstant = parsed;
   USE_SERIAL.println("Config loaded from flash");
 }
 
@@ -136,6 +146,8 @@ void saveConfig() {
   doc["mqttUser"]   = cfgMqttUser;
   doc["mqttUserPw"] = cfgMqttUserPw;
   doc["mqttPepper"] = cfgMqttPepper;
+  doc["timezone"]   = cfgTimezone;
+  doc["cpmFactor"]  = cfgCpmFactor;
 
   File file = LittleFS.open(CONFIG_FILE, "w");
   if (!file) {
@@ -194,7 +206,6 @@ void saveConfigCallback() {
 
 void IRAM_ATTR impulse() {
   impulseCounter++;
-  if (client.connected()) USE_SERIAL.printf("Impulse detected, number: %lu\n", impulseCounter);
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -255,6 +266,8 @@ void reconnect() {
         WiFiManagerParameter wm_user  ("mqtt_user",   "MQTT User",     cfgMqttUser,   32);
         WiFiManagerParameter wm_pw    ("mqtt_userpw", "MQTT Password", cfgMqttUserPw, 64, " type='password'");
         WiFiManagerParameter wm_pepper("mqtt_pepper", "MQTT Pepper",   cfgMqttPepper, 64, " type='password'");
+        WiFiManagerParameter wm_tz    ("timezone",    "Timezone",      cfgTimezone,   40);
+        WiFiManagerParameter wm_cpm  ("cpm_factor",  "CPM Factor (uSv/h)", cfgCpmFactor, 10);
 
         WiFiManager wifiManager;
         wifiManager.setSaveConfigCallback(saveConfigCallback);
@@ -263,6 +276,8 @@ void reconnect() {
         wifiManager.addParameter(&wm_user);
         wifiManager.addParameter(&wm_pw);
         wifiManager.addParameter(&wm_pepper);
+        wifiManager.addParameter(&wm_tz);
+        wifiManager.addParameter(&wm_cpm);
         wifiManager.setClass("invert");
         wifiManager.setHostname(deviceHostname.c_str());
         wifiManager.startConfigPortal(deviceHostname.c_str(), wifiApPass.c_str());
@@ -272,6 +287,12 @@ void reconnect() {
         strlcpy(cfgMqttUser,   wm_user.getValue(),   sizeof(cfgMqttUser));
         strlcpy(cfgMqttUserPw, wm_pw.getValue(),     sizeof(cfgMqttUserPw));
         strlcpy(cfgMqttPepper, wm_pepper.getValue(), sizeof(cfgMqttPepper));
+        strlcpy(cfgTimezone,   wm_tz.getValue(),      sizeof(cfgTimezone));
+        strlcpy(cfgCpmFactor,  wm_cpm.getValue(),     sizeof(cfgCpmFactor));
+        {
+          float p = atof(cfgCpmFactor);
+          if (p > 0) cpmConstant = p;
+        }
 
         if (shouldSaveConfig) {
           saveConfig();
@@ -280,7 +301,7 @@ void reconnect() {
 
         deriveMqttCredentials();
         buildMqttStrings();
-        client.setServer(cfgMqttServer, atoi(cfgMqttPort));
+        client.setServer(cfgMqttServer, validPort(cfgMqttPort));
         continue;
       }
 
@@ -336,6 +357,8 @@ void setup() {
   WiFiManagerParameter wm_user  ("mqtt_user",   "MQTT User",     cfgMqttUser,   32);
   WiFiManagerParameter wm_pw    ("mqtt_userpw", "MQTT Password", cfgMqttUserPw, 64, " type='password'");
   WiFiManagerParameter wm_pepper("mqtt_pepper", "MQTT Pepper",   cfgMqttPepper, 64, " type='password'");
+  WiFiManagerParameter wm_tz    ("timezone",    "Timezone",      cfgTimezone,   40);
+  WiFiManagerParameter wm_cpm  ("cpm_factor",  "CPM Factor (uSv/h)", cfgCpmFactor, 10);
 
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
@@ -344,6 +367,8 @@ void setup() {
   wifiManager.addParameter(&wm_user);
   wifiManager.addParameter(&wm_pw);
   wifiManager.addParameter(&wm_pepper);
+  wifiManager.addParameter(&wm_tz);
+  wifiManager.addParameter(&wm_cpm);
   wifiManager.setClass("invert");
   wifiManager.setScanDispPerc(true);
   wifiManager.setShowInfoErase(false);
@@ -369,6 +394,12 @@ void setup() {
   strlcpy(cfgMqttUser,   wm_user.getValue(),   sizeof(cfgMqttUser));
   strlcpy(cfgMqttUserPw, wm_pw.getValue(),     sizeof(cfgMqttUserPw));
   strlcpy(cfgMqttPepper, wm_pepper.getValue(), sizeof(cfgMqttPepper));
+  strlcpy(cfgTimezone,   wm_tz.getValue(),      sizeof(cfgTimezone));
+  strlcpy(cfgCpmFactor,  wm_cpm.getValue(),     sizeof(cfgCpmFactor));
+  {
+    float p = atof(cfgCpmFactor);
+    if (p > 0) cpmConstant = p;
+  }
 
   // Save to flash only if the user submitted the portal
   if (shouldSaveConfig) {
@@ -381,12 +412,12 @@ void setup() {
   deriveMqttCredentials();
   buildMqttStrings();
 
-  client.setServer(cfgMqttServer, atoi(cfgMqttPort));
+  client.setServer(cfgMqttServer, validPort(cfgMqttPort));
   client.setCallback(callback);
   client.setKeepAlive(1200);
 
   waitForSync();
-  Geiger.setLocation(localTimezone);
+  Geiger.setLocation(cfgTimezone);
   lcd.clear();
 }
 

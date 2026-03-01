@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (MAC-based auto-provisioning of MQTT credentials)
+Last updated: 2026-03-01 (bug fixes, hardening, configurable timezone & CPM factor)
 
 ---
 
@@ -103,7 +103,7 @@ The Python subscriber distinguishes these by the presence of the `cpm` key — o
 
 ### `cpm` vs `usvh`
 - `cpm` is the raw count of pulses over the last 60-second window (effectively counts per minute).
-- `usvh` = `cpm × 0.0057` — the conversion constant for the RadiationD v1.1 / SBM-20 tube. Other tubes use different constants; this is a hardcoded value in the sketch (`cpmConstant`).
+- `usvh` = `cpm × cpmConstant` — the conversion constant defaults to `0.0057` for the RadiationD v1.1 / SBM-20 tube. Other tubes use different constants; the value is configurable via the WiFiManager portal.
 
 ---
 
@@ -162,6 +162,8 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - After 12 failed MQTT reconnect attempts, the device opens the WiFiManager config portal (AP mode) so the user can correct settings — it no longer blindly restarts.
 - The `events()` call at the bottom of `loop()` is required by the ezTime library for periodic NTP re-sync.
 - `showCountdown` is set to `false` — the LCD does not show the 60 s countdown by default. Set to `true` to re-enable.
+- **Timezone** and **CPM conversion factor** are configurable via the WiFiManager portal (no re-flash needed). Timezone defaults to `Europe/Vienna`; CPM factor defaults to `0.0057` (SBM-20 tube). Invalid CPM values (zero, negative, non-numeric) are silently ignored and the previous value is kept.
+- The ISR (`impulse()`) only increments the counter — no Serial output inside the interrupt.
 
 ### `ngnt-geiger-dockerized/scripts/pm2/mqtt_bro_impulses.py`
 
@@ -172,6 +174,7 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
   - `batch_writer` — drains the queue and flushes to MariaDB using `executemany()`. Flushes when `BATCH_MAX_SIZE` (50 rows) is reached or after `BATCH_MAX_SECONDS` (5 s), whichever comes first.
 - **Connection pool:** `aiomysql.create_pool(minsize=2, maxsize=10)` — created once at startup, shared across all flushes. No per-message connection overhead.
 - **MQTT reconnection:** exponential backoff on `aiomqtt.MqttError` (1 s → 2 s → … → 60 s cap). Resubscribes automatically after reconnect.
+- **DB error handling:** exponential backoff on flush errors (1 s → 2 s → … → 60 s cap), matching the MQTT reconnect pattern. Batch is preserved across retries but capped at 10,000 rows to prevent unbounded memory growth.
 - Silently skips messages without a `cpm` field (connection/will messages).
 
 ### `ngnt-geiger-dockerized/Dockerfiles/DockerfilePhpApache`
@@ -182,6 +185,7 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 ### `ngnt-geiger-dockerized/Dockerfiles/DockerfileSubscriber`
 
 - Uses `aiomqtt` (async MQTT client) and `aiomysql` (pure-Python async MySQL/MariaDB driver) — both are pure Python, so no C compiler or `libmariadb` system libraries are needed. The image is a plain `pip install` on top of `python:slim`.
+- Runs as a non-root `subscriber` user inside the container.
 - Previously used `paho-mqtt` + the `mariadb` C extension (requiring `gcc` and `libmariadb-dev` at build time).
 
 ### `ngnt-geiger-dockerized/app/index.php`
@@ -193,6 +197,7 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - Chart.js 4.4.0 loaded from jsDelivr CDN. If deploying offline, download and serve locally.
 - Chart data is embedded as JSON directly in the HTML (PHP → `json_encode`). No separate API endpoint.
 - The dose rate card turns orange when uSv/h > 0.5 (roughly 5× typical background).
+- Database errors are logged to stderr (`error_log()`) with full details; users see only a generic "Could not connect to the database." message.
 
 ### `ngnt-geiger-dockerized/add-device.sh`
 

@@ -54,7 +54,8 @@ try {
     )->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
-    $db_error = $e->getMessage();
+    error_log('Dashboard DB error: ' . $e->getMessage());
+    $db_error = 'Could not connect to the database.';
 }
 
 $chart_labels = array_map(fn($r) => utcToLocal($r['measured_at']), $chart_data);

@@ -38,6 +38,7 @@ async def flush(pool: aiomysql.Pool, batch: list) -> None:
 
 async def batch_writer(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
     batch = []
+    db_backoff = 1
     while True:
         try:
             row = await asyncio.wait_for(queue.get(), timeout=BATCH_MAX_SECONDS)
@@ -52,15 +53,22 @@ async def batch_writer(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
             if len(batch) >= BATCH_MAX_SIZE:
                 await flush(pool, batch)
                 batch = []
+                db_backoff = 1
 
         except asyncio.TimeoutError:
             if batch:
                 await flush(pool, batch)
                 batch = []
+                db_backoff = 1
 
         except Exception as e:
-            print(f"[db] flush error: {e}")
-            await asyncio.sleep(1)
+            print(f"[db] flush error: {e} — retrying in {db_backoff}s (batch size: {len(batch)})")
+            if len(batch) > 10_000:
+                dropped = len(batch) - 10_000
+                batch = batch[-10_000:]
+                print(f"[db] batch cap reached, dropped {dropped} oldest row(s)")
+            await asyncio.sleep(db_backoff)
+            db_backoff = min(db_backoff * 2, 60)
 
 
 # ── MQTT listener ─────────────────────────────────────────────────────────────
