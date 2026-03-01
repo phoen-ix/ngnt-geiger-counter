@@ -314,6 +314,26 @@ docker exec -it ngnt-geiger-mariadb \
   mariadb -u mariadb_usr -p ngnt-geigercounter
 ```
 
+**Updating the GitHub release after changes:**
+
+The `v2.0` tag and release body must both be updated manually after pushing changes:
+
+```bash
+# 1. Move the tag to the latest commit
+git tag -f v2.0 HEAD
+git push --force origin v2.0
+
+# 2. Update the release body via the GitHub API
+TOKEN=$(git remote get-url origin | sed 's|https://[^:]*:\(.*\)@github.com.*|\1|')
+curl -s -X PATCH \
+  -H "Authorization: token $TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://api.github.com/repos/phoen-ix/ngnt-geiger-counter/releases/tags/v2.0" \
+  -d '{"body": "…updated release notes…"}'
+```
+
+Both steps are needed — the API call updates the text but does **not** move the tag. Without `git tag -f` + `git push --force origin v2.0`, the release page keeps pointing at the old commit and shows a stale timestamp.
+
 **Full reset:**
 ```bash
 cd ngnt-geiger-dockerized
