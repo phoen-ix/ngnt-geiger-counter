@@ -8,8 +8,11 @@ RELOAD_FLAG="/mosquitto/config/.reload"
 # ── Build initial password file ──────────────────────────────────────────────
 
 rebuild_passwd() {
-    # Truncate (can't use -c on a bind-mounted file) then add the subscriber user
+    # Truncate and fix ownership first — mosquitto_passwd warns if group != root
     : > "$PASSWD_FILE"
+    chown root:root "$PASSWD_FILE"
+    chmod 0644 "$PASSWD_FILE"
+
     mosquitto_passwd -b "$PASSWD_FILE" "$MQTT_PYTHON_USER" "$MQTT_PYTHON_USERPW"
 
     # Re-provision auto-provisioned devices (if any)
@@ -19,10 +22,6 @@ rebuild_passwd() {
             mosquitto_passwd -b "$PASSWD_FILE" "$dev_user" "$dev_pass"
         done < "$DEVICES_CONF"
     fi
-
-    # Mosquitto requires root:root ownership on the password file
-    chown root:root "$PASSWD_FILE"
-    chmod 0644 "$PASSWD_FILE"
 }
 
 rebuild_passwd
