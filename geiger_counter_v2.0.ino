@@ -32,8 +32,6 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
-#define ONE_MINUTE        60000
-#define COUNTDOWN_SECONDS 60
 #define CONFIG_FILE       "/config.json"
 
 int  retryCounter      = 0;
@@ -45,9 +43,13 @@ char  cfgDeadTime[6]        = "200";
 volatile unsigned long deadTimeMicros = 200;
 const int   geigerPin   = 12;
 volatile unsigned long impulseCounter;
-unsigned long previousMillis;
-unsigned long countdownMillis;
-bool countdownFinished = false;
+int  lastPublishMinute = -1;
+bool measuring         = false;
+unsigned long lastCpm  = 0;
+bool hasReading        = false;
+int  publishAtSecond   = 0;
+bool publishPending    = false;
+char pendingMqttBuf[128];
 
 // ── Device identity (not user-configurable via portal) ───────────────────
 const String deviceHostname = "GeigerCounter";
@@ -73,7 +75,6 @@ String mqttConnectedMessage;
 char cfgTimezone[40] = "Europe/Vienna";
 const String dateOrder      = "d.m.y";
 const String timestampOrder = "H:i:s";
-const bool   showCountdown  = false;
 
 
 // ── Config helpers ────────────────────────────────────────────────────────
@@ -219,6 +220,13 @@ void IRAM_ATTR impulse() {
   }
 }
 
+void lcdPrintLine(int row, const char* text) {
+  lcd.setCursor(0, row);
+  char buf[21];
+  snprintf(buf, sizeof(buf), "%-20s", text);
+  lcd.print(buf);
+}
+
 void reconnect() {
   while (!client.connected()) {
     byte    mqttWillQoS     = 0;
@@ -232,10 +240,13 @@ void reconnect() {
       retryCounter++;
 
       lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Connection Error");
-      lcd.setCursor(0, 1);
-      lcd.print("Error Code: " + String(client.state()));
+      lcdPrintLine(0, "Connection Error");
+      char errLine[21];
+      snprintf(errLine, sizeof(errLine), "Error Code: %d", client.state());
+      lcdPrintLine(1, errLine);
+      char srvLine[21];
+      snprintf(srvLine, sizeof(srvLine), "%.20s", cfgMqttServer);
+      lcdPrintLine(2, srvLine);
 
       switch (client.state()) {
         case -4: USE_SERIAL.println("-4 MQTT_CONNECTION_TIMEOUT");     break;
@@ -316,8 +327,9 @@ void reconnect() {
         continue;
       }
 
-      lcd.setCursor(0, 3);
-      lcd.print("Attempt " + String(retryCounter) + " of " + String(connectionAttempts));
+      char attLine[21];
+      snprintf(attLine, sizeof(attLine), "Attempt %d of %d", retryCounter, connectionAttempts);
+      lcdPrintLine(3, attLine);
       USE_SERIAL.printf("Trying again, attempt %d of %d\n", retryCounter, connectionAttempts);
 
       WiFiManager wifiManager;
@@ -330,21 +342,7 @@ void reconnect() {
   }
 
   retryCounter = 0;
-
-  noInterrupts();
-  unsigned long cpm = impulseCounter;
-  interrupts();
-
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(Geiger.dateTime(dateOrder));
-  lcd.setCursor(5, 2);
-  char buffer[16];
-  sprintf(buffer, "CPM: %lu", cpm);
-  lcd.print(buffer);
-  lcd.setCursor(3, 3);
-  lcd.print("uSv/h:  ");
-  lcd.print(cpm * cpmConstant, 4);
 }
 
 
@@ -360,8 +358,8 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.clear();
-  lcd.home();
-  countdownMillis = millis() + ONE_MINUTE;
+  lcdPrintLine(0, " NGNT-GeigerCounter");
+  lcdPrintLine(1, "   Initializing...");
 
   // Load saved MQTT config from flash (fills cfgMqtt* with stored values)
   loadConfig();
@@ -438,9 +436,21 @@ void setup() {
   client.setServer(cfgMqttServer, validPort(cfgMqttPort));
   client.setKeepAlive(1200);
 
+  lcd.clear();
+  lcdPrintLine(0, " NGNT-GeigerCounter");
+  lcdPrintLine(1, "  Syncing time...");
+
   waitForSync();
   Geiger.setLocation(cfgTimezone);
-  previousMillis = millis();
+
+  noInterrupts();
+  impulseCounter = 0;
+  interrupts();
+  lastPublishMinute = Geiger.minute();
+  measuring = false;
+
+  randomSeed(ESP.random());  // hardware RNG seed
+
   lcd.clear();
 }
 
@@ -448,61 +458,89 @@ void setup() {
 // ── Loop ──────────────────────────────────────────────────────────────────
 
 void loop() {
-  unsigned long currentMillis = millis();
-
   if (!client.connected()) {
     reconnect();
   }
   client.loop();
 
-  if (!countdownFinished) {
-    long remainingSeconds = (countdownMillis - currentMillis) / 1000;
-    if (remainingSeconds < 0) remainingSeconds = 0;
+  int currentMinute = Geiger.minute();
+  int currentSecond = Geiger.second();
+  int remaining     = 60 - currentSecond;
+  if (remaining == 60) remaining = 0;
 
-    lcd.setCursor(0, 0);
-    lcd.print(Geiger.dateTime(dateOrder));
-    lcd.setCursor(12, 0);
-    lcd.print(Geiger.dateTime(timestampOrder));
+  // Row 0: live date + time (always)
+  char row0[21];
+  snprintf(row0, sizeof(row0), "%s    %s",
+           Geiger.dateTime(dateOrder).c_str(),
+           Geiger.dateTime(timestampOrder).c_str());
+  lcdPrintLine(0, row0);
 
-    if (showCountdown) {
-      char countdownStr[4];
-      sprintf(countdownStr, "%2ld", remainingSeconds);
-      lcd.setCursor(0, 1);
-      lcd.print(countdownStr);
+  // Minute transition
+  if (currentMinute != lastPublishMinute) {
+    if (!measuring) {
+      // First transition: discard partial window, start measuring
+      noInterrupts();
+      impulseCounter = 0;
+      interrupts();
+      measuring = true;
+      lcd.clear();
+      // Reprint row 0 after clear
+      lcdPrintLine(0, row0);
+      USE_SERIAL.println("Clock aligned — measuring started");
+    } else {
+      // Subsequent transitions: snapshot the completed minute
+      noInterrupts();
+      unsigned long cpm = impulseCounter;
+      impulseCounter    = 0;
+      interrupts();
+
+      // Build MQTT message now (captures the :00 timestamp), publish later
+      snprintf(pendingMqttBuf, sizeof(pendingMqttBuf),
+               "{\"id\":\"%s\",\"ts\":\"%s\",\"cpm\":%lu,\"usvh\":%.4f}",
+               cfgMqttUser, UTC.dateTime("Y-m-d H:i:s").c_str(), cpm,
+               cpm * cpmConstant);
+      publishAtSecond = random(1, 58);  // 1-57 s
+      publishPending  = true;
+
+      lastCpm    = cpm;
+      hasReading = true;
+
+      USE_SERIAL.printf("CPM: %lu — publishing at :%02d\n", cpm, publishAtSecond);
     }
-
-    if (remainingSeconds == 0) countdownFinished = true;
+    lastPublishMinute = currentMinute;
   }
 
-  if (currentMillis - previousMillis > ONE_MINUTE) {
-    previousMillis = currentMillis;
+  // Delayed MQTT publish — spreads load when many devices share a broker
+  if (publishPending && currentSecond >= publishAtSecond) {
+    client.publish(mqttTopic.c_str(), pendingMqttBuf);
+    publishPending = false;
+    USE_SERIAL.println("MQTT published");
+  }
 
-    noInterrupts();
-    unsigned long cpm = impulseCounter;
-    impulseCounter    = 0;
-    interrupts();
+  // Row 1: countdown (only while waiting for alignment or first reading)
+  if (!measuring) {
+    char row1[21];
+    snprintf(row1, sizeof(row1), " Waiting for :00 %2ds", remaining);
+    lcdPrintLine(1, row1);
+  } else if (!hasReading) {
+    char row1[21];
+    snprintf(row1, sizeof(row1), "  Next reading %3ds", remaining);
+    lcdPrintLine(1, row1);
+  } else {
+    lcdPrintLine(1, "");
+  }
 
-    char lcdBuf[16];
-    sprintf(lcdBuf, "CPM: %lu", cpm);
+  // Rows 2-3: last measurement (redrawn every loop so lcd.clear() can't wipe them)
+  if (hasReading) {
+    char row2[21];
+    snprintf(row2, sizeof(row2), "     CPM: %lu", lastCpm);
+    lcdPrintLine(2, row2);
 
-    char mqttBuf[128];
-    snprintf(mqttBuf, sizeof(mqttBuf),
-             "{\"id\":\"%s\",\"ts\":\"%s\",\"cpm\":%lu,\"usvh\":%.4f}",
-             cfgMqttUser, UTC.dateTime("Y-m-d H:i:s").c_str(), cpm,
-             cpm * cpmConstant);
-    client.publish(mqttTopic.c_str(), mqttBuf);
-
-    lcd.setCursor(0, 0);
-    lcd.print(Geiger.dateTime(dateOrder));
-    lcd.setCursor(5, 2);
-    lcd.print(lcdBuf);
-    lcd.setCursor(3, 3);
-    lcd.print("uSv/h:  ");
-    lcd.print(cpm * cpmConstant, 4);
-
-    countdownFinished = false;
-    countdownMillis   = millis() + ONE_MINUTE;
-    USE_SERIAL.println("Impulse counter reset to 0");
+    char row3[21];
+    char usvStr[10];
+    dtostrf(lastCpm * cpmConstant, 1, 4, usvStr);
+    snprintf(row3, sizeof(row3), "  uSv/h: %s", usvStr);
+    lcdPrintLine(3, row3);
   }
 
   events(); // required by ezTime for periodic NTP re-sync

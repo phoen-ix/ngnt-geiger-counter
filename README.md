@@ -128,7 +128,7 @@ Settings are saved to `/config.json` on the device flash and reloaded on every b
 - After connecting, it synchronises time via NTP (ezTime) and connects to the MQTT broker.
 - If MQTT connection fails after 12 attempts, the device opens the config portal again (AP mode) so you can correct server/credential settings without re-flashing.
 - An interrupt on GPIO 12 increments a counter on every falling edge from the Geiger-Müller tube.
-- Every 60 seconds it publishes a JSON measurement to `/geiger00/impulses`, resets the counter, and updates the LCD. The first measurement window begins after boot completes, so the first reading always covers a full 60 s period.
+- Every 60 seconds it publishes a JSON measurement to `/geiger00/impulses`, resets the counter, and updates the LCD. Measurements are **clock-aligned** — the firmware waits for the next :00 second boundary after NTP sync before starting its first window, so every reading covers an exact wall-clock minute. The actual MQTT publish is delayed by a random 1–57 s offset each cycle to spread broker load across multiple devices; the timestamp in the message always reflects the measurement time. The LCD shows a countdown during alignment and the first measurement cycle, then switches to just date/time and CPM/uSv/h once readings are available.
 
 **MQTT message format** (published every 60 s):
 ```json

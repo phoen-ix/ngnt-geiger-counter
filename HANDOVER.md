@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (ISR debounce, configurable dead time)
+Last updated: 2026-03-01 (clock-aligned measurements, LCD status overhaul)
 
 ---
 
@@ -161,13 +161,14 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - `keepAlive` is set to 1200 s (20 min) — intentionally long because the device only publishes once per minute and we don't want reconnect churn.
 - After 12 failed MQTT reconnect attempts, the device opens the WiFiManager config portal (AP mode) so the user can correct settings — it no longer blindly restarts.
 - The `events()` call at the bottom of `loop()` is required by the ezTime library for periodic NTP re-sync.
-- `showCountdown` is set to `false` — the LCD does not show the 60 s countdown by default. Set to `true` to re-enable.
 - **Timezone**, **CPM conversion factor**, and **dead time** are configurable via the WiFiManager portal (no re-flash needed). Timezone defaults to `Europe/Vienna`; CPM factor defaults to `0.0057` (SBM-20 tube); dead time defaults to `200` µs (SBM-20, use 50–90 for J305). Invalid CPM values (zero, negative, non-numeric) and invalid dead times (zero, negative, > 10000) are silently ignored and the previous value is kept.
 - The ISR (`impulse()`) increments the counter with a configurable dead-time debounce (default 200 µs). This filters signal bounce/ringing on the GPIO pin without losing real pulses.
 - `impulseCounter` is snapshot with `noInterrupts()`/`interrupts()` before use, avoiding race conditions between the ISR and the main loop (consistent CPM/uSv/h values and no lost pulses on reset).
-- The first 60 s measurement window starts after `setup()` completes (`previousMillis = millis()`), so the first published reading covers a clean collection period rather than including boot time.
+- **Clock-aligned measurements:** After NTP sync, the firmware waits for the next :00 second boundary before starting its first measurement window. This ensures every published reading covers an exact wall-clock minute. Timing uses `Geiger.minute()` (NTP-derived) instead of `millis()`, so there is no drift. The LCD shows a live countdown during the wait ("Waiting for :00") and during normal operation ("Next reading").
+- **Staggered MQTT publish:** The MQTT message is built at the :00 boundary (capturing the correct timestamp), but the actual publish is delayed by a random 1–57 s offset chosen fresh each cycle. This spreads broker load when multiple devices report simultaneously. The LCD updates immediately with the new reading; only the network send is deferred.
 - The MQTT JSON message is built with `snprintf` into a stack buffer instead of `String` concatenation, avoiding heap fragmentation on the ESP8266.
 - The device is publish-only — there is no MQTT subscribe or callback.
+- **LCD states:** The 20×4 display shows contextual information for every phase: "Initializing..." during boot, "Syncing time..." during NTP sync, "Waiting for :00" with a countdown after NTP until the first wall-clock minute boundary, "Next reading" countdown during the first measurement cycle, then live date/time and CPM/uSv/h values during normal operation (the countdown is hidden once readings are available). Connection errors show the error code, server address, and retry attempt count. After 12 failed MQTT attempts, the AP portal screen is shown.
 
 ### `ngnt-geiger-dockerized/scripts/pm2/mqtt_bro_impulses.py`
 
