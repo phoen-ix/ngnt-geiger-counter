@@ -203,6 +203,8 @@ Single-file Flask app with all routes. Key components:
 
 **Session security (`before_request`):** On every authenticated request, queries `pw_version` and `role` from the DB. If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login.
 
+**Input validation:** Usernames restricted to `[a-zA-Z0-9_-]` (3-50 chars). User-controlled strings in JS contexts use `|tojson` filter to prevent XSS. Invalid `display_timezone` values fall back to UTC instead of crashing.
+
 **Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random 20-char password, prints to stdout, and saves to `/app/data/admin_initial_password.txt` (mode 0600). The file is deleted when the admin changes their password.
 
 **Routes:**

@@ -2,7 +2,7 @@
 
 A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case.
 
-**v3.0** — user accounts, web-based device provisioning, Flask dashboard (replaces PHP), per-user public/private visibility, admin panel with SMTP password reset.
+**v3.0** — user accounts, web-based device provisioning, Flask dashboard (replaces PHP), per-user public/private visibility, admin panel with SMTP password reset, session security hardening.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
