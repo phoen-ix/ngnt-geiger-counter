@@ -41,6 +41,8 @@ const int connectionAttempts = 12;
 
 char  cfgCpmFactor[10] = "0.0057";
 float cpmConstant      = 0.0057;
+char  cfgDeadTime[6]        = "200";
+volatile unsigned long deadTimeMicros = 200;
 const int   geigerPin   = 12;
 volatile unsigned long impulseCounter;
 unsigned long previousMillis;
@@ -126,6 +128,9 @@ void loadConfig() {
   strlcpy(cfgCpmFactor,  doc["cpmFactor"]  | cfgCpmFactor,  sizeof(cfgCpmFactor));
   float parsed = atof(cfgCpmFactor);
   if (parsed > 0) cpmConstant = parsed;
+  strlcpy(cfgDeadTime,   doc["deadTime"]   | cfgDeadTime,   sizeof(cfgDeadTime));
+  unsigned long dt = strtoul(cfgDeadTime, NULL, 10);
+  if (dt > 0 && dt <= 10000) deadTimeMicros = dt;
   USE_SERIAL.println("Config loaded from flash");
 }
 
@@ -148,6 +153,7 @@ void saveConfig() {
   doc["mqttPepper"] = cfgMqttPepper;
   doc["timezone"]   = cfgTimezone;
   doc["cpmFactor"]  = cfgCpmFactor;
+  doc["deadTime"]   = cfgDeadTime;
 
   File file = LittleFS.open(CONFIG_FILE, "w");
   if (!file) {
@@ -205,7 +211,12 @@ void saveConfigCallback() {
 // ── MQTT / interrupt handlers ─────────────────────────────────────────────
 
 void IRAM_ATTR impulse() {
-  impulseCounter++;
+  static unsigned long lastPulse = 0;
+  unsigned long now = micros();
+  if (now - lastPulse >= deadTimeMicros) {
+    impulseCounter++;
+    lastPulse = now;
+  }
 }
 
 void reconnect() {
@@ -261,6 +272,7 @@ void reconnect() {
         WiFiManagerParameter wm_pepper("mqtt_pepper", "MQTT Pepper",   cfgMqttPepper, 64, " type='password'");
         WiFiManagerParameter wm_tz    ("timezone",    "Timezone",      cfgTimezone,   40);
         WiFiManagerParameter wm_cpm  ("cpm_factor",  "CPM Factor (uSv/h)", cfgCpmFactor, 10);
+        WiFiManagerParameter wm_dt   ("dead_time",   "Dead time (us)",     cfgDeadTime,   6);
 
         WiFiManager wifiManager;
         wifiManager.setSaveConfigCallback(saveConfigCallback);
@@ -271,6 +283,7 @@ void reconnect() {
         wifiManager.addParameter(&wm_pepper);
         wifiManager.addParameter(&wm_tz);
         wifiManager.addParameter(&wm_cpm);
+        wifiManager.addParameter(&wm_dt);
         wifiManager.setClass("invert");
         wifiManager.setHostname(deviceHostname.c_str());
         wifiManager.startConfigPortal(deviceHostname.c_str(), wifiApPass.c_str());
@@ -285,6 +298,11 @@ void reconnect() {
         {
           float p = atof(cfgCpmFactor);
           if (p > 0) cpmConstant = p;
+        }
+        strlcpy(cfgDeadTime, wm_dt.getValue(), sizeof(cfgDeadTime));
+        {
+          unsigned long dt = strtoul(cfgDeadTime, NULL, 10);
+          if (dt > 0 && dt <= 10000) deadTimeMicros = dt;
         }
 
         if (shouldSaveConfig) {
@@ -357,6 +375,7 @@ void setup() {
   WiFiManagerParameter wm_pepper("mqtt_pepper", "MQTT Pepper",   cfgMqttPepper, 64, " type='password'");
   WiFiManagerParameter wm_tz    ("timezone",    "Timezone",      cfgTimezone,   40);
   WiFiManagerParameter wm_cpm  ("cpm_factor",  "CPM Factor (uSv/h)", cfgCpmFactor, 10);
+  WiFiManagerParameter wm_dt   ("dead_time",   "Dead time (us)",     cfgDeadTime,   6);
 
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
@@ -367,6 +386,7 @@ void setup() {
   wifiManager.addParameter(&wm_pepper);
   wifiManager.addParameter(&wm_tz);
   wifiManager.addParameter(&wm_cpm);
+  wifiManager.addParameter(&wm_dt);
   wifiManager.setClass("invert");
   wifiManager.setScanDispPerc(true);
   wifiManager.setShowInfoErase(false);
@@ -397,6 +417,11 @@ void setup() {
   {
     float p = atof(cfgCpmFactor);
     if (p > 0) cpmConstant = p;
+  }
+  strlcpy(cfgDeadTime, wm_dt.getValue(), sizeof(cfgDeadTime));
+  {
+    unsigned long dt = strtoul(cfgDeadTime, NULL, 10);
+    if (dt > 0 && dt <= 10000) deadTimeMicros = dt;
   }
 
   // Save to flash only if the user submitted the portal

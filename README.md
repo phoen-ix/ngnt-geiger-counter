@@ -118,6 +118,7 @@ The firmware uses **LittleFS + WiFiManager custom parameters** to store MQTT set
 | MQTT Pepper | *(empty)* | `MQTT_PEPPER` in `.env` (see Auto-provisioning below) |
 | Timezone | `Europe/Vienna` | [tz database name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) for NTP-based local time |
 | CPM Factor (uSv/h) | `0.0057` | Conversion constant for your Geiger-Müller tube (0.0057 for SBM-20) |
+| Dead time (us) | `200` | ISR debounce in microseconds (200 for SBM-20, 50–90 for J305) |
 
 Settings are saved to `/config.json` on the device flash and reloaded on every boot. To reconfigure, reset the WiFi settings (hold the reset method of your choice, or call `wifiManager.resetSettings()`) to trigger the portal again.
 

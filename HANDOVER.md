@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (ISR race condition fix, security headers, pool cleanup)
+Last updated: 2026-03-01 (ISR debounce, configurable dead time)
 
 ---
 
@@ -162,8 +162,8 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - After 12 failed MQTT reconnect attempts, the device opens the WiFiManager config portal (AP mode) so the user can correct settings — it no longer blindly restarts.
 - The `events()` call at the bottom of `loop()` is required by the ezTime library for periodic NTP re-sync.
 - `showCountdown` is set to `false` — the LCD does not show the 60 s countdown by default. Set to `true` to re-enable.
-- **Timezone** and **CPM conversion factor** are configurable via the WiFiManager portal (no re-flash needed). Timezone defaults to `Europe/Vienna`; CPM factor defaults to `0.0057` (SBM-20 tube). Invalid CPM values (zero, negative, non-numeric) are silently ignored and the previous value is kept.
-- The ISR (`impulse()`) only increments the counter — no Serial output inside the interrupt.
+- **Timezone**, **CPM conversion factor**, and **dead time** are configurable via the WiFiManager portal (no re-flash needed). Timezone defaults to `Europe/Vienna`; CPM factor defaults to `0.0057` (SBM-20 tube); dead time defaults to `200` µs (SBM-20, use 50–90 for J305). Invalid CPM values (zero, negative, non-numeric) and invalid dead times (zero, negative, > 10000) are silently ignored and the previous value is kept.
+- The ISR (`impulse()`) increments the counter with a configurable dead-time debounce (default 200 µs). This filters signal bounce/ringing on the GPIO pin without losing real pulses.
 - `impulseCounter` is snapshot with `noInterrupts()`/`interrupts()` before use, avoiding race conditions between the ISR and the main loop (consistent CPM/uSv/h values and no lost pulses on reset).
 - The first 60 s measurement window starts after `setup()` completes (`previousMillis = millis()`), so the first published reading covers a clean collection period rather than including boot time.
 - The MQTT JSON message is built with `snprintf` into a stack buffer instead of `String` concatenation, avoiding heap fragmentation on the ESP8266.
