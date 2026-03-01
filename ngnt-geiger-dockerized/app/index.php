@@ -18,16 +18,20 @@ $range_options = [
 $range = array_key_exists($_GET['range'] ?? '', $range_options) ? $_GET['range'] : '24h';
 $sql_interval = $range_options[$range][0];
 $range_label  = $range_options[$range][1];
+$device_param = $_GET['device'] ?? 'all';
 
 $db_host = 'mariadb';
 $db_name = getenv('MARIADB_DATABASE') ?: 'ngnt-geigercounter';
 $db_user = getenv('MARIADB_USER');
 $db_pass = getenv('MARIADB_PASSWORD');
 
-$db_error = null;
-$latest   = null;
+$db_error   = null;
+$latest     = null;
 $chart_data = [];
-$recent   = [];
+$recent     = [];
+$devices    = [];
+$device     = 'all';
+$device_qs  = '';
 
 try {
     $pdo = new PDO(
@@ -37,21 +41,56 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    $latest = $pdo->query(
-        "SELECT device_id, measured_at, cpm, usvh FROM measurements ORDER BY measured_at DESC LIMIT 1"
-    )->fetch(PDO::FETCH_ASSOC);
+    $devices = $pdo->query(
+        "SELECT DISTINCT device_id FROM measurements ORDER BY device_id"
+    )->fetchAll(PDO::FETCH_COLUMN);
 
-    $chart_data = $pdo->query(
-        "SELECT measured_at, cpm, usvh FROM measurements
-         WHERE measured_at >= NOW() - INTERVAL {$sql_interval}
-         ORDER BY measured_at ASC"
-    )->fetchAll(PDO::FETCH_ASSOC);
+    $device = in_array($device_param, $devices, true) ? $device_param : 'all';
+    $device_qs = ($device !== 'all') ? '&device=' . urlencode($device) : '';
 
-    $recent = $pdo->query(
-        "SELECT device_id, measured_at, cpm, usvh FROM measurements
-         WHERE measured_at >= NOW() - INTERVAL {$sql_interval}
-         ORDER BY measured_at DESC LIMIT 100"
-    )->fetchAll(PDO::FETCH_ASSOC);
+    if ($device === 'all') {
+        $latest = $pdo->query(
+            "SELECT device_id, measured_at, cpm, usvh FROM measurements ORDER BY measured_at DESC LIMIT 1"
+        )->fetch(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $pdo->prepare(
+            "SELECT device_id, measured_at, cpm, usvh FROM measurements WHERE device_id = ? ORDER BY measured_at DESC LIMIT 1"
+        );
+        $stmt->execute([$device]);
+        $latest = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    if ($device === 'all') {
+        $chart_data = $pdo->query(
+            "SELECT measured_at, cpm, usvh FROM measurements
+             WHERE measured_at >= NOW() - INTERVAL {$sql_interval}
+             ORDER BY measured_at ASC"
+        )->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $pdo->prepare(
+            "SELECT measured_at, cpm, usvh FROM measurements
+             WHERE device_id = ? AND measured_at >= NOW() - INTERVAL {$sql_interval}
+             ORDER BY measured_at ASC"
+        );
+        $stmt->execute([$device]);
+        $chart_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if ($device === 'all') {
+        $recent = $pdo->query(
+            "SELECT device_id, measured_at, cpm, usvh FROM measurements
+             WHERE measured_at >= NOW() - INTERVAL {$sql_interval}
+             ORDER BY measured_at DESC LIMIT 100"
+        )->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $pdo->prepare(
+            "SELECT device_id, measured_at, cpm, usvh FROM measurements
+             WHERE device_id = ? AND measured_at >= NOW() - INTERVAL {$sql_interval}
+             ORDER BY measured_at DESC LIMIT 100"
+        );
+        $stmt->execute([$device]);
+        $recent = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
 } catch (PDOException $e) {
     error_log('Dashboard DB error: ' . $e->getMessage());
@@ -67,7 +106,7 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="60;url=?range=<?= htmlspecialchars($range) ?>">
+    <meta http-equiv="refresh" content="60;url=?range=<?= htmlspecialchars($range) ?><?= htmlspecialchars($device_qs) ?>">
     <title>NGNT Geiger Counter</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
@@ -210,7 +249,9 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
     <p>
         <?php if ($latest): ?>
             Last reading: <strong><?= htmlspecialchars(utcToLocal($latest['measured_at'])) ?></strong>
-            &mdash; device: <?= htmlspecialchars($latest['device_id']) ?>
+            <?php if ($device === 'all'): ?>
+                &mdash; device: <?= htmlspecialchars($latest['device_id']) ?>
+            <?php endif; ?>
             &bull; page auto-refreshes every 60&thinsp;s
         <?php else: ?>
             Waiting for first measurement &bull; page auto-refreshes every 60&thinsp;s
@@ -220,9 +261,25 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
 
 <div class="range-bar">
     <?php foreach ($range_options as $key => $opt): ?>
-        <a href="?range=<?= $key ?>"<?= $key === $range ? ' class="active"' : '' ?>><?= htmlspecialchars($opt[1]) ?></a>
+        <a href="?range=<?= $key ?><?= htmlspecialchars($device_qs) ?>"<?= $key === $range ? ' class="active"' : '' ?>><?= htmlspecialchars($opt[1]) ?></a>
     <?php endforeach; ?>
 </div>
+
+<?php if (count($devices) > 1): ?>
+<div class="range-bar" style="margin-top:-16px;">
+    <form method="get" style="display:flex;align-items:center;gap:8px;">
+        <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
+        <label for="device-select" style="font-size:0.8rem;color:#8b949e;">Device:</label>
+        <select name="device" id="device-select" onchange="this.form.submit()"
+            style="background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:20px;padding:6px 16px;font-size:0.8rem;font-weight:600;cursor:pointer;">
+            <option value="all"<?= $device === 'all' ? ' selected' : '' ?>>All devices</option>
+            <?php foreach ($devices as $dev): ?>
+                <option value="<?= htmlspecialchars($dev) ?>"<?= $device === $dev ? ' selected' : '' ?>><?= htmlspecialchars($dev) ?></option>
+            <?php endforeach; ?>
+        </select>
+    </form>
+</div>
+<?php endif; ?>
 
 <?php if ($db_error): ?>
     <div class="error">Database error: <?= htmlspecialchars($db_error) ?></div>
@@ -244,8 +301,14 @@ $chart_usvh   = array_map(fn($r) => (float)$r['usvh'], $chart_data);
     <?php if ($latest): ?>
     <div class="card">
         <div class="card-label">Device</div>
-        <div class="card-value green" style="font-size:1rem;padding-top:6px;">online</div>
-        <div class="card-unit"><?= htmlspecialchars($latest['device_id']) ?></div>
+        <div class="card-value green" style="font-size:1rem;padding-top:6px;">
+            <?= $device === 'all' ? 'online' : htmlspecialchars($device) ?>
+        </div>
+        <div class="card-unit">
+            <?= $device === 'all'
+                ? htmlspecialchars($latest['device_id']) . ' (latest)'
+                : 'online' ?>
+        </div>
     </div>
     <?php endif; ?>
     <?php if (!empty($recent)): ?>

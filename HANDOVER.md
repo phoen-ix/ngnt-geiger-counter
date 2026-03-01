@@ -29,7 +29,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Dashboard: configurable time range | ✅ Done | `?range=` GET param (1h/6h/24h/7d) |
 | Dashboard: data export (CSV/JSON) | ❌ Not started | |
 | Auto-provisioning (MAC + pepper) | ✅ Done | Firmware derives credentials from MAC; `add-device.sh` registers on server |
-| Multiple device support | ❌ Not started | Schema supports it, dashboard does not yet filter |
+| Multiple device support | ✅ Done | Dashboard device dropdown, per-device query filtering |
 | Grafana integration | ❌ Not started | |
 | Front plate v2 (switches) | ❌ Not started | Hardware only |
 
@@ -201,8 +201,9 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 
 - Single-file PHP dashboard — no framework, no build step.
 - DB credentials come from environment variables set in `docker-compose.yml` for the php_apache service.
-- The page has a `<meta http-equiv="refresh" content="60">` for auto-reload (preserves the selected time range).
+- The page has a `<meta http-equiv="refresh" content="60">` for auto-reload (preserves the selected time range and device).
 - **Time range selector:** pill buttons at the top let the user choose 1h / 6h / 24h (default) / 7d. Selection is passed as `?range=` GET parameter. Invalid values fall back to `24h`. Only hardcoded interval literals from a whitelist reach SQL — no user input is interpolated.
+- **Device selector:** A `<select>` dropdown appears when multiple devices exist in the DB. Selection is passed as `?device=` GET parameter (validated with strict `in_array()` against a `SELECT DISTINCT device_id` result). Defaults to `'all'` (shows combined data from every device). The "all" path uses the original unfiltered queries; the per-device path uses prepared statements with `WHERE device_id = ?`. The dropdown is hidden when only one device exists. The composite index `idx_device_measured (device_id, measured_at)` ensures efficient filtering.
 - Chart.js 4.4.0 loaded from jsDelivr CDN. If deploying offline, download and serve locally.
 - Chart data is embedded as JSON directly in the HTML (PHP → `json_encode`). No separate API endpoint.
 - The dose rate card turns orange when uSv/h > 0.5 (roughly 5× typical background).
@@ -279,10 +280,7 @@ Add a simple `export.php` that runs `SELECT * FROM measurements ORDER BY measure
 ### 2. MQTT over TLS
 Generate a self-signed cert (or use Let's Encrypt). Add a second listener block to `mosquitto.conf` on port 8883 with `cafile`, `certfile`, `keyfile`. Update the sketch to use WiFiClientSecure and load the CA cert.
 
-### 3. Multi-device dashboard
-The schema already stores `device_id`. Add a device selector dropdown to `index.php` and filter queries with `WHERE device_id = ?`.
-
-### 4. Grafana integration
+### 3. Grafana integration
 MariaDB can be used directly as a Grafana data source. Add a `grafana` service to `docker-compose.yml`, mount a provisioning config pointing at MariaDB, and provision a dashboard JSON.
 
 ---
