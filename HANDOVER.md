@@ -19,7 +19,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Area | Status | Notes |
 |------|--------|-------|
 | Hardware design | Done | Published on Printables, no planned changes |
-| Firmware v2 (`.ino`) | Done | WiFi, MQTT over TLS (`setInsecure`), NTP, JSON payload |
+| Firmware v2.1 (`.ino`) | Done | WiFi, MQTT over TLS (`setInsecure`), NTP, JSON payload |
 | MQTT broker (Mosquitto) | Done | Auth, ACL, TLS (self-signed, auto-generated), Docker, entrypoint with reload watcher |
 | DB schema (`dbinit.sql`) | Done | `users`, `devices`, `password_resets`, `measurements`, `settings` |
 | Python subscriber (`mqtt_bro_impulses.py`) | Done | UPDATE-only device status (devices must be pre-registered) |
@@ -191,7 +191,7 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 
 ## File-by-file notes
 
-### `geiger_counter_v2.0.ino`
+### `geiger_counter_v2.1.ino`
 
 Changed in v3.2: uses `WiFiClientSecure` + `setInsecure()` for MQTT over TLS; default port changed from 2883 to 8883.
 

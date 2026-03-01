@@ -12,7 +12,7 @@ A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 
 
 ```
 ngnt-geiger-counter/
-├── geiger_counter_v2.0.ino          # ESP8266 firmware (Wemos D1 R2)
+├── geiger_counter_v2.1.ino          # ESP8266 firmware (Wemos D1 R2)
 └── ngnt-geiger-dockerized/
     ├── app/                         # Flask web application
     │   ├── app.py                   # Routes, admin bootstrap
@@ -86,7 +86,7 @@ ngnt-geiger-counter/
 
 ---
 
-## Firmware — `geiger_counter_v2.0.ino`
+## Firmware — `geiger_counter_v2.1.ino`
 
 ### Required Arduino libraries
 
