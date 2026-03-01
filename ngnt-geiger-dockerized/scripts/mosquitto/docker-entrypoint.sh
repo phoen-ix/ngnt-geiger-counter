@@ -8,8 +8,9 @@ RELOAD_FLAG="/mosquitto/config/.reload"
 # ── Build initial password file ──────────────────────────────────────────────
 
 rebuild_passwd() {
-    # Start fresh with the Python subscriber user
-    mosquitto_passwd -c -b "$PASSWD_FILE" "$MQTT_PYTHON_USER" "$MQTT_PYTHON_USERPW"
+    # Truncate (can't use -c on a bind-mounted file) then add the subscriber user
+    : > "$PASSWD_FILE"
+    mosquitto_passwd -b "$PASSWD_FILE" "$MQTT_PYTHON_USER" "$MQTT_PYTHON_USERPW"
 
     # Re-provision auto-provisioned devices (if any)
     if [ -f "$DEVICES_CONF" ]; then
