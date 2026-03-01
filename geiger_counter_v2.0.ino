@@ -319,16 +319,21 @@ void reconnect() {
   }
 
   retryCounter = 0;
+
+  noInterrupts();
+  unsigned long cpm = impulseCounter;
+  interrupts();
+
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print(Geiger.dateTime(dateOrder));
   lcd.setCursor(5, 2);
-  char buffer[10];
-  sprintf(buffer, "CPM: %lu", impulseCounter);
+  char buffer[16];
+  sprintf(buffer, "CPM: %lu", cpm);
   lcd.print(buffer);
   lcd.setCursor(3, 3);
   lcd.print("uSv/h:  ");
-  lcd.print(impulseCounter * cpmConstant, 4);
+  lcd.print(cpm * cpmConstant, 4);
 }
 
 
@@ -443,7 +448,7 @@ void loop() {
 
     if (showCountdown) {
       char countdownStr[4];
-      sprintf(countdownStr, "%2lu", remainingSeconds);
+      sprintf(countdownStr, "%2ld", remainingSeconds);
       lcd.setCursor(0, 1);
       lcd.print(countdownStr);
     }
@@ -454,13 +459,18 @@ void loop() {
   if (currentMillis - previousMillis > ONE_MINUTE) {
     previousMillis = currentMillis;
 
-    char buffer[10];
-    sprintf(buffer, "CPM: %lu", impulseCounter);
+    noInterrupts();
+    unsigned long cpm = impulseCounter;
+    impulseCounter    = 0;
+    interrupts();
+
+    char buffer[16];
+    sprintf(buffer, "CPM: %lu", cpm);
 
     String mqttSendMsg = String("{\"id\":\"")  + cfgMqttUser +
                          "\",\"ts\":\""  + UTC.dateTime("Y-m-d H:i:s") +
-                         "\",\"cpm\":"   + String(impulseCounter) +
-                         ",\"usvh\":"    + String(impulseCounter * cpmConstant, 4) + "}";
+                         "\",\"cpm\":"   + String(cpm) +
+                         ",\"usvh\":"    + String(cpm * cpmConstant, 4) + "}";
     client.publish(mqttTopic.c_str(), mqttSendMsg.c_str());
 
     lcd.setCursor(0, 0);
@@ -469,11 +479,10 @@ void loop() {
     lcd.print(buffer);
     lcd.setCursor(3, 3);
     lcd.print("uSv/h:  ");
-    lcd.print(impulseCounter * cpmConstant, 4);
+    lcd.print(cpm * cpmConstant, 4);
 
     countdownFinished = false;
     countdownMillis   = millis() + ONE_MINUTE;
-    impulseCounter    = 0;
     USE_SERIAL.println("Impulse counter reset to 0");
   }
 

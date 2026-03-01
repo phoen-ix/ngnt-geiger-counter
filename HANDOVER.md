@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (bug fixes, hardening, configurable timezone & CPM factor)
+Last updated: 2026-03-01 (ISR race condition fix, security headers, pool cleanup)
 
 ---
 
@@ -164,6 +164,7 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - `showCountdown` is set to `false` — the LCD does not show the 60 s countdown by default. Set to `true` to re-enable.
 - **Timezone** and **CPM conversion factor** are configurable via the WiFiManager portal (no re-flash needed). Timezone defaults to `Europe/Vienna`; CPM factor defaults to `0.0057` (SBM-20 tube). Invalid CPM values (zero, negative, non-numeric) are silently ignored and the previous value is kept.
 - The ISR (`impulse()`) only increments the counter — no Serial output inside the interrupt.
+- `impulseCounter` is snapshot with `noInterrupts()`/`interrupts()` before use, avoiding race conditions between the ISR and the main loop (consistent CPM/uSv/h values and no lost pulses on reset).
 
 ### `ngnt-geiger-dockerized/scripts/pm2/mqtt_bro_impulses.py`
 
@@ -175,11 +176,13 @@ Note: InnoDB requires the partition key to be part of every unique index, so the
 - **Connection pool:** `aiomysql.create_pool(minsize=2, maxsize=10)` — created once at startup, shared across all flushes. No per-message connection overhead.
 - **MQTT reconnection:** exponential backoff on `aiomqtt.MqttError` (1 s → 2 s → … → 60 s cap). Resubscribes automatically after reconnect.
 - **DB error handling:** exponential backoff on flush errors (1 s → 2 s → … → 60 s cap), matching the MQTT reconnect pattern. Batch is preserved across retries but capped at 10,000 rows to prevent unbounded memory growth.
+- **Cleanup:** The database connection pool is closed cleanly on shutdown via `try`/`finally`.
 - Silently skips messages without a `cpm` field (connection/will messages).
 
 ### `ngnt-geiger-dockerized/Dockerfiles/DockerfilePhpApache`
 
 - Only the `pdo_mysql` extension is installed — it is the only one used by `index.php`. The `mysqli`, `calendar`, and `sockets` extensions were previously installed but are unused and have been removed to keep the image slim.
+- `mod_headers` is enabled and the Apache security config sets `X-Content-Type-Options: nosniff` and `X-Frame-Options: sameorigin`.
 - Uses [mlocati/docker-php-extension-installer](https://github.com/mlocati/docker-php-extension-installer) to install the extension cleanly without manual dependency management.
 
 ### `ngnt-geiger-dockerized/Dockerfiles/DockerfileSubscriber`

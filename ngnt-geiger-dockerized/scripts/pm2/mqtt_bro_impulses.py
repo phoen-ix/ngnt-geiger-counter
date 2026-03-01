@@ -46,9 +46,12 @@ async def batch_writer(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
             queue.task_done()
 
             # drain any further items already waiting in the queue
-            while not queue.empty() and len(batch) < BATCH_MAX_SIZE:
-                batch.append(queue.get_nowait())
-                queue.task_done()
+            while len(batch) < BATCH_MAX_SIZE:
+                try:
+                    batch.append(queue.get_nowait())
+                    queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
 
             if len(batch) >= BATCH_MAX_SIZE:
                 await flush(pool, batch)
@@ -129,11 +132,16 @@ async def main() -> None:
     )
     print(f"[db] pool ready — {DB_HOST}:{DB_PORT}/{DB_NAME} (min=2, max=10)")
 
-    queue: asyncio.Queue = asyncio.Queue()
+    try:
+        queue: asyncio.Queue = asyncio.Queue()
 
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task(batch_writer(pool, queue))
-        tg.create_task(mqtt_listener(queue))
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(batch_writer(pool, queue))
+            tg.create_task(mqtt_listener(queue))
+    finally:
+        pool.close()
+        await pool.wait_closed()
+        print("[db] pool closed")
 
 
 asyncio.run(main())
