@@ -13,9 +13,10 @@ if [ -f "$DEVICES_CONF" ]; then
     done < "$DEVICES_CONF"
 fi
 
-# passwd.txt must be owned by root with restricted permissions
-chmod 0700 /mosquitto/config/passwd.txt
-chown root:root /mosquitto/config/passwd.txt
+# passwd.txt must be owned by root (Mosquitto requirement) but readable
+# by the mosquitto group so the daemon can load it after dropping privileges
+chown root:mosquitto /mosquitto/config/passwd.txt
+chmod 0640 /mosquitto/config/passwd.txt
 
 # Data and log dirs need mosquitto ownership for the daemon to write
 chown -R mosquitto:mosquitto /mosquitto/data /mosquitto/log 2>/dev/null || true
