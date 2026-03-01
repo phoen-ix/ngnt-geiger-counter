@@ -187,7 +187,7 @@ Key-value store. v3 adds SMTP fields and `site_name`:
 
 ### `geiger_counter_v2.0.ino`
 
-Unchanged in v3.0. See v2.0 handover notes for full details.
+Unchanged in v3.0.
 
 Key points for v3 integration:
 - If pepper is set and MQTT User/Password are at defaults, the firmware derives credentials from MAC + pepper using HMAC-SHA256.
@@ -262,14 +262,14 @@ Changed from v2.0:
 
 Enhanced from v2.0:
 - Removed `MQTT_GEIGER_USER`/`MQTT_GEIGER_USERPW` provisioning (devices now come from `devices.conf` only)
-- `rebuild_passwd()` function creates `passwd.txt` from scratch (`-c` flag for first entry, then `-b` for subsequent)
+- `rebuild_passwd()` function truncates `passwd.txt` and rebuilds from scratch
 - Starts Mosquitto as a background process (can't use `exec "$@"` because the watcher needs to run)
 - Background reload watcher: polls every 5 seconds for `.reload` flag, calls `rebuild_passwd()` + SIGHUP
 - Signal forwarding: traps SIGTERM/SIGINT and forwards to Mosquitto PID
 
 ### `Dockerfiles/DockerfileFlask`
 
-Python 3.13-slim + pip install of Flask, PyMySQL, Gunicorn. Runs Gunicorn with 2 workers on port 8000.
+Python 3.13-slim + pip install of Flask, PyMySQL, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker.
 
 ### `Dockerfiles/DockerfileSubscriber`
 
