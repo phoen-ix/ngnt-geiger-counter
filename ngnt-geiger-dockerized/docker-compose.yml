@@ -1,0 +1,109 @@
+version: '3.3'
+services:
+    ngnt-geiger-php_apache:
+        build:
+            context: .
+            dockerfile: ./Dockerfiles/DockerfilePhpApache
+        container_name: ngnt-geiger-php_apache
+        restart: unless-stopped
+        ports:
+            - ${PHP_APACHE_PORTS}
+        environment:
+            MARIADB_USER: ${MARIADB_USER}
+            MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+            MARIADB_DATABASE: ${MARIADB_DATABASE}
+        volumes:
+            - ./app:/var/www/html
+            - ./config/php_apache/security.conf:/etc/apache2/conf-available/security.conf:ro
+            - ./config/php_apache/apache2.conf:/etc/apache2/apache2.conf:ro
+        depends_on:
+            - ngnt-geiger-mariadb
+        networks:
+            ngnt-geiger-network:
+                ipv4_address: ${IPV4_NETWORK}.10
+                aliases:
+                    - php_apache
+
+    ngnt-geiger-mariadb:
+        image: mariadb:${DOCKER_IMAGE_MARIADB_TAG}
+        container_name: ngnt-geiger-mariadb
+        restart: unless-stopped
+        expose:
+            - 3306
+        environment:
+            MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+            MARIADB_USER: ${MARIADB_USER}
+            MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+            MARIADB_DATABASE: ${MARIADB_DATABASE}
+            MARIADB_TIMEZONE: ${MARIADB_TIMEZONE}
+        volumes:
+            - ./volumes/mariadb:/var/lib/mysql
+            - ./dbinit.sql:/docker-entrypoint-initdb.d/init.sql:ro
+            - ./config/mariadb/event-scheduler.cnf:/etc/mysql/conf.d/event-scheduler.cnf:ro
+        networks:
+            ngnt-geiger-network:
+                ipv4_address: ${IPV4_NETWORK}.20
+                aliases:
+                    - mariadb
+
+    ngnt-geiger-mosquitto:
+        image: eclipse-mosquitto:${DOCKER_IMAGE_MOSQUITTO_TAG}
+        container_name: ngnt-geiger-mosquitto
+        restart: unless-stopped
+        ports:
+            - ${MOSQUITTO_PORTS}
+        environment:
+          MQTT_PYTHON_USER: ${MQTT_PYTHON_USER}
+          MQTT_PYTHON_USERPW: ${MQTT_PYTHON_USERPW}
+          MQTT_GEIGER_USER: ${MQTT_GEIGER_USER}
+          MQTT_GEIGER_USERPW: ${MQTT_GEIGER_USERPW}
+        volumes:
+            - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+            - ./config/mosquitto/acls:/mosquitto/config/acls:ro
+            - ./config/mosquitto/passwd.txt:/mosquitto/config/passwd.txt
+            - ./config/mosquitto/conf.d/:/mosquitto/config/conf.d/:ro
+            - ./log/mosquitto/:/mosquitto/log/
+            - ./volumes/mosquitto/data:/mosquitto/data/
+            - ./scripts/mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+
+        networks:
+            ngnt-geiger-network:
+                ipv4_address: ${IPV4_NETWORK}.30
+                aliases:
+                    - mosquitto
+
+
+    ngnt-geiger-subscriber:
+        build:
+            context: .
+            dockerfile: ./Dockerfiles/DockerfileSubscriber
+        container_name: ngnt-geiger-subscriber
+        restart: unless-stopped
+        environment:
+          MARIADB_DATABASE: ${MARIADB_DATABASE}
+          MARIADB_USER: ${MARIADB_USER}
+          MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+          MQTT_PYTHON_USER: ${MQTT_PYTHON_USER}
+          MQTT_PYTHON_USERPW: ${MQTT_PYTHON_USERPW}
+          IPV4_NETWORK: ${IPV4_NETWORK}
+        volumes:
+            - ./scripts/pm2/:/opt/scripts/:ro
+        depends_on:
+            - ngnt-geiger-mariadb
+            - ngnt-geiger-mosquitto
+        networks:
+            ngnt-geiger-network:
+                ipv4_address: ${IPV4_NETWORK}.40
+                aliases:
+                    - subscriber
+
+
+networks:
+   ngnt-geiger-network:
+     driver: bridge
+     driver_opts:
+       com.docker.network.bridge.name: br-ngnt-geiger
+     ipam:
+       driver: default
+       config:
+         - subnet: ${IPV4_NETWORK}.0/24
