@@ -32,42 +32,41 @@ def inject_site_name():
 # ── Admin bootstrap ─────────────────────────────────────────────────────────
 
 def bootstrap_admin():
-    try:
-        db = get_db()
-        with db.cursor() as cur:
-            cur.execute("SELECT COUNT(*) AS cnt FROM users")
-            if cur.fetchone()['cnt'] == 0:
-                password = secrets.token_urlsafe(20)
-                pw_hash = generate_password_hash(password)
-                cur.execute(
-                    "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, 'admin')",
-                    ('admin', pw_hash),
-                )
-                print(f'\n{"="*60}')
-                print(f'  Admin account created')
-                print(f'  Username: admin')
-                print(f'  Password: {password}')
-                print(f'{"="*60}\n')
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS cnt FROM users")
+        if cur.fetchone()['cnt'] == 0:
+            password = secrets.token_urlsafe(20)
+            pw_hash = generate_password_hash(password)
+            cur.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, 'admin')",
+                ('admin', pw_hash),
+            )
+            print(f'\n{"="*60}', flush=True)
+            print(f'  Admin account created', flush=True)
+            print(f'  Username: admin', flush=True)
+            print(f'  Password: {password}', flush=True)
+            print(f'{"="*60}\n', flush=True)
 
-                os.makedirs('/app/data', exist_ok=True)
-                with open('/app/data/admin_initial_password.txt', 'w') as f:
-                    f.write(f'Username: admin\nPassword: {password}\n')
-        db.close()
-    except Exception as e:
-        print(f'[bootstrap] admin check failed (DB may not be ready yet): {e}')
+            os.makedirs('/app/data', exist_ok=True)
+            with open('/app/data/admin_initial_password.txt', 'w') as f:
+                f.write(f'Username: admin\nPassword: {password}\n')
+    db.close()
 
 
 # Run bootstrap with retries (DB might not be ready)
-def bootstrap_with_retry():
-    for attempt in range(10):
+def bootstrap_admin_with_retry():
+    for attempt in range(30):
         try:
             bootstrap_admin()
             return
-        except Exception:
+        except Exception as e:
+            print(f'[bootstrap] attempt {attempt + 1}/30 — {e}', flush=True)
             time.sleep(2)
+    print('[bootstrap] gave up after 30 attempts', flush=True)
 
 
-bootstrap_with_retry()
+bootstrap_admin_with_retry()
 
 
 # ── Timezone helper ──────────────────────────────────────────────────────────
