@@ -208,13 +208,6 @@ void IRAM_ATTR impulse() {
   impulseCounter++;
 }
 
-void callback(char* topic, byte* payload, unsigned int length) {
-  String mqttReceivedMsg;
-  for (unsigned int i = 0; i < length; i++) {
-    mqttReceivedMsg += (char)payload[i];
-  }
-}
-
 void reconnect() {
   while (!client.connected()) {
     byte    mqttWillQoS     = 0;
@@ -418,11 +411,11 @@ void setup() {
   buildMqttStrings();
 
   client.setServer(cfgMqttServer, validPort(cfgMqttPort));
-  client.setCallback(callback);
   client.setKeepAlive(1200);
 
   waitForSync();
   Geiger.setLocation(cfgTimezone);
+  previousMillis = millis();
   lcd.clear();
 }
 
@@ -464,19 +457,20 @@ void loop() {
     impulseCounter    = 0;
     interrupts();
 
-    char buffer[16];
-    sprintf(buffer, "CPM: %lu", cpm);
+    char lcdBuf[16];
+    sprintf(lcdBuf, "CPM: %lu", cpm);
 
-    String mqttSendMsg = String("{\"id\":\"")  + cfgMqttUser +
-                         "\",\"ts\":\""  + UTC.dateTime("Y-m-d H:i:s") +
-                         "\",\"cpm\":"   + String(cpm) +
-                         ",\"usvh\":"    + String(cpm * cpmConstant, 4) + "}";
-    client.publish(mqttTopic.c_str(), mqttSendMsg.c_str());
+    char mqttBuf[128];
+    snprintf(mqttBuf, sizeof(mqttBuf),
+             "{\"id\":\"%s\",\"ts\":\"%s\",\"cpm\":%lu,\"usvh\":%.4f}",
+             cfgMqttUser, UTC.dateTime("Y-m-d H:i:s").c_str(), cpm,
+             cpm * cpmConstant);
+    client.publish(mqttTopic.c_str(), mqttBuf);
 
     lcd.setCursor(0, 0);
     lcd.print(Geiger.dateTime(dateOrder));
     lcd.setCursor(5, 2);
-    lcd.print(buffer);
+    lcd.print(lcdBuf);
     lcd.setCursor(3, 3);
     lcd.print("uSv/h:  ");
     lcd.print(cpm * cpmConstant, 4);
