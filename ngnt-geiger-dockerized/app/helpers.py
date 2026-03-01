@@ -55,7 +55,7 @@ def admin_required(f):
 
 
 # ── Credential derivation ────────────────────────────────────────────────────
-# Must match firmware: geiger_counter_v2.1.ino
+# Must match firmware: geiger_counter_v2.2.ino
 
 def derive_mqtt_credentials(mac_address: str, pepper: str) -> tuple[str, str]:
     mac_hex = mac_address.replace(':', '').replace('-', '').lower()

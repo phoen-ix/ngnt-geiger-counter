@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (v3.3 — firmware v2.2: auto-generated pepper, info screen)
+Last updated: 2026-03-01 (v3.3 — firmware v2.2, Mosquitto reload fix)
 
 ---
 
@@ -68,7 +68,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 └─────────────────────────────────────────────────────────┘
 ```
 
-Flask writes `devices.conf` and a `.reload` flag when provisioning devices. Mosquitto's entrypoint polls for the flag every 5 seconds and regenerates `passwd.txt` + sends SIGHUP.
+Flask writes `devices.conf` and a `.reload` flag when provisioning devices. Both Flask and Mosquitto mount the same host directory (`./config/mosquitto`), so the flag is visible to both containers. Mosquitto's entrypoint polls for the flag every 5 seconds and regenerates `passwd.txt` + sends SIGHUP.
 
 ---
 
@@ -285,6 +285,7 @@ Enhanced from v2.0:
 - Starts Mosquitto as a background process (can't use `exec "$@"` because the watcher needs to run)
 - Background reload watcher: polls every 5 seconds for `.reload` flag, calls `rebuild_passwd()` + SIGHUP
 - Signal forwarding: traps SIGTERM/SIGINT and forwards to Mosquitto PID
+- **Volume mount** (v3.3): the entire `./config/mosquitto` directory is mounted at `/mosquitto/config` (previously individual file mounts, which prevented Flask's `.reload` flag from being visible inside the container)
 
 ### `Dockerfiles/DockerfileFlask`
 
