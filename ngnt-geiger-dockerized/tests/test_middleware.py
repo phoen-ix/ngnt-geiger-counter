@@ -99,8 +99,8 @@ def test_before_request_session_timeout(client, mock_cursor, app_instance):
 
 # ── before_request: DB error swallowed ──────────────────────────────────────
 
-def test_before_request_db_error_swallowed(client, mock_cursor, app_instance):
-    """If DB fails in before_request, the error is caught gracefully."""
+def test_before_request_db_error_clears_session(client, mock_cursor, app_instance):
+    """If DB fails in before_request, session is cleared and error is logged."""
     with client.session_transaction() as sess:
         sess['user_id'] = 1
         sess['username'] = 'testuser'
@@ -109,14 +109,16 @@ def test_before_request_db_error_swallowed(client, mock_cursor, app_instance):
 
     # In TESTING mode Flask propagates exceptions, so the route's get_db()
     # call will raise.  Temporarily disable propagation to verify that
-    # before_request itself swallows the error and the route is reached.
+    # before_request itself catches the error and the route is reached.
     app_instance.config['PROPAGATE_EXCEPTIONS'] = False
     try:
         with patch('app.get_db', side_effect=Exception('DB down')):
             resp = client.get('/')
-            # before_request catches its error, but the route also needs DB
-            # and will fail → 500 is expected
+            # before_request catches its error and clears session, but the
+            # route also needs DB and will fail → 500 is expected
             assert resp.status_code in (200, 500)
+        with client.session_transaction() as sess:
+            assert 'user_id' not in sess
     finally:
         app_instance.config['PROPAGATE_EXCEPTIONS'] = True
 

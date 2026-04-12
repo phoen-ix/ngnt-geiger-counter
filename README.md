@@ -2,7 +2,7 @@
 
 A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case.
 
-**v3.3** — Firmware v2.2: auto-generated pepper, info screen replaces reconnect portal. Fixed Mosquitto reload for device provisioning. MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
+**v3.3** — Firmware v2.2: auto-generated pepper, info screen replaces reconnect portal. Security audit hardening: DB connection pooling, pinned dependencies, credential files removed from git. Fixed Mosquitto reload for device provisioning. MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -17,7 +17,8 @@ ngnt-geiger-counter/
     ├── app/                         # Flask web application
     │   ├── app.py                   # Routes, admin bootstrap
     │   ├── helpers.py               # Credential derivation, provisioning, auth
-    │   ├── requirements.txt
+    │   ├── requirements.txt         # Production deps (pinned)
+    │   ├── requirements-dev.txt     # Adds pytest for local testing
     │   ├── static/style.css
     │   └── templates/               # Jinja2 templates (9 files)
     ├── tests/                       # pytest test suite (98 tests)
@@ -253,7 +254,7 @@ The test suite runs on the host (no Docker needed) and uses mocked DB connection
 
 ```bash
 cd ngnt-geiger-dockerized
-pip install flask flask-wtf flask-limiter pymysql pytest
+pip install -r app/requirements-dev.txt
 FLASK_TESTING=1 python -m pytest tests/ -v
 ```
 
@@ -352,7 +353,7 @@ FLASK_TESTING=1 python -m pytest tests/ -v
 - `test_before_request_pw_version_mismatch`
 - `test_before_request_role_refreshed`
 - `test_before_request_session_timeout`
-- `test_before_request_db_error_swallowed`
+- `test_before_request_db_error_clears_session`
 - `test_before_request_skips_static`
 - `test_csrf_rejects_without_token`
 - `test_rate_limiting_enforced`
@@ -364,6 +365,10 @@ FLASK_TESTING=1 python -m pytest tests/ -v
 
 - **MQTT TLS** — The firmware uses `WiFiClientSecure::setInsecure()` which encrypts traffic but does not verify the server certificate. This prevents passive eavesdropping of MQTT credentials over WiFi but does not protect against active man-in-the-middle attacks. Acceptable for a home network deployment.
 - The plain MQTT listener (port 2883 -> 1883) remains available for backward compatibility with un-updated devices and internal container-to-container traffic.
+- **Flask secret key** — `FLASK_SECRET_KEY` is mandatory; the app will refuse to start if it is not set.
+- **DB connection pooling** — Flask uses `DBUtils.PooledDB` to recycle MariaDB connections instead of opening a new one per request.
+- **Mosquitto logging** — Set to `warning` level. Change to `debug` in `config/mosquitto/conf.d/mosquitto_addons.conf` only when troubleshooting.
+- **Credential files** — `devices.conf` and `passwd.txt` are gitignored and excluded from version control. They are managed at runtime by Flask provisioning and the Mosquitto entrypoint.
 
 ## Open / future ideas
 

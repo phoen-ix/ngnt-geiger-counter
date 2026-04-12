@@ -1,6 +1,7 @@
 FROM python:3.13.12-slim
 
-RUN pip install --no-cache-dir aiomqtt aiomysql && \
+COPY scripts/pm2/requirements.txt /opt/requirements.txt
+RUN pip install --no-cache-dir -r /opt/requirements.txt && \
     useradd -r -s /usr/sbin/nologin subscriber
 
 USER subscriber

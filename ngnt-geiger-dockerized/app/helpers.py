@@ -8,22 +8,37 @@ from email.mime.text import MIMEText
 from functools import wraps
 
 import pymysql
+from dbutils.pooled_db import PooledDB
 from flask import redirect, session, url_for
 
 
 # ── Database ─────────────────────────────────────────────────────────────────
 
+_pool = None
+
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        _pool = PooledDB(
+            creator=pymysql,
+            maxconnections=10,
+            mincached=2,
+            maxcached=5,
+            host='mariadb',
+            port=3306,
+            user=os.environ['MARIADB_USER'],
+            password=os.environ['MARIADB_PASSWORD'],
+            database=os.environ['MARIADB_DATABASE'],
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor,
+            autocommit=True,
+        )
+    return _pool
+
+
 def get_db():
-    return pymysql.connect(
-        host='mariadb',
-        port=3306,
-        user=os.environ['MARIADB_USER'],
-        password=os.environ['MARIADB_PASSWORD'],
-        database=os.environ['MARIADB_DATABASE'],
-        charset='utf8mb4',
-        cursorclass=pymysql.cursors.DictCursor,
-        autocommit=True,
-    )
+    return _get_pool().connection()
 
 
 def get_settings(db):

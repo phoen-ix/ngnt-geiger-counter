@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import secrets
@@ -15,8 +16,10 @@ from helpers import (admin_required, derive_mqtt_credentials, get_db,
                      get_settings, login_required, provision_device,
                      send_password_reset_email, unprovision_device)
 
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-me')
+app.secret_key = os.environ['FLASK_SECRET_KEY']
 csrf = CSRFProtect(app)
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
@@ -60,7 +63,8 @@ def refresh_session():
         session.permanent = True
         app.permanent_session_lifetime = timedelta(minutes=timeout)
     except Exception:
-        pass
+        logger.exception('refresh_session: DB check failed, clearing session')
+        session.clear()
 
 
 # ── Admin bootstrap ─────────────────────────────────────────────────────────
@@ -112,9 +116,18 @@ def utc_to_local(utc_str: str, tz_name: str) -> str:
     dt = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
     try:
         local = dt.astimezone(ZoneInfo(tz_name))
-    except (KeyError, Exception):
-        local = dt  # fall back to UTC on invalid timezone
+    except KeyError:
+        local = dt  # fall back to UTC on unknown timezone name
     return local.strftime('%Y-%m-%d %H:%M:%S')
+
+
+def localize_measured_at(row: dict, tz_name: str) -> None:
+    """Add 'measured_at_local' key to a measurement dict."""
+    ma = row['measured_at']
+    row['measured_at_local'] = utc_to_local(
+        ma.strftime('%Y-%m-%d %H:%M:%S') if isinstance(ma, datetime) else str(ma),
+        tz_name,
+    )
 
 
 def is_device_online(device: dict, offline_timeout: int) -> bool:
@@ -378,25 +391,13 @@ def dashboard():
 
     # Convert timestamps for display
     if latest:
-        ma = latest['measured_at']
-        latest['measured_at_local'] = utc_to_local(
-            ma.strftime('%Y-%m-%d %H:%M:%S') if isinstance(ma, datetime) else str(ma),
-            display_tz,
-        )
+        localize_measured_at(latest, display_tz)
 
     for row in chart_data:
-        ma = row['measured_at']
-        row['measured_at_local'] = utc_to_local(
-            ma.strftime('%Y-%m-%d %H:%M:%S') if isinstance(ma, datetime) else str(ma),
-            display_tz,
-        )
+        localize_measured_at(row, display_tz)
 
     for row in recent:
-        ma = row['measured_at']
-        row['measured_at_local'] = utc_to_local(
-            ma.strftime('%Y-%m-%d %H:%M:%S') if isinstance(ma, datetime) else str(ma),
-            display_tz,
-        )
+        localize_measured_at(row, display_tz)
 
     chart_labels = [r['measured_at_local'] for r in chart_data]
     chart_cpm = [int(r['cpm']) for r in chart_data]
@@ -568,7 +569,8 @@ def account():
 
 SETTINGS_KEYS = [
     'base_url', 'display_timezone', 'offline_timeout_minutes',
-    'default_cpm_factor', 'default_alert_threshold', 'registration_enabled',
+    'default_cpm_factor',  # reserved: applied on-device (firmware)
+    'default_alert_threshold', 'registration_enabled',
     'session_timeout_minutes',
 ]
 SMTP_KEYS = [

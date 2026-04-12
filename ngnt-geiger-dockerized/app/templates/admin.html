@@ -28,7 +28,8 @@
         <div class="form-row">
             <label for="s-cpm">Default CPM Factor</label>
             <input type="text" id="s-cpm" name="default_cpm_factor"
-                   value="{{ settings.get('default_cpm_factor', '0.0057') }}">
+                   value="{{ settings.get('default_cpm_factor', '0.0057') }}"
+                   disabled title="Reserved — CPM factor is currently applied on-device">
         </div>
         <div class="form-row">
             <label for="s-alert">Default Alert Threshold (&mu;Sv/h)</label>

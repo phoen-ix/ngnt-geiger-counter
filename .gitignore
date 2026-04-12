@@ -5,6 +5,7 @@ ngnt-geiger-dockerized/.env
 # ── Auto-provisioned device credentials (plaintext, managed by Flask)
 # The empty seed file is force-added; populated versions are gitignored.
 ngnt-geiger-dockerized/config/mosquitto/devices.conf
+ngnt-geiger-dockerized/config/mosquitto/passwd.txt
 
 # ── Mosquitto reload flag ────────────────────────────────────────────────────
 ngnt-geiger-dockerized/config/mosquitto/.reload
@@ -24,6 +25,9 @@ ngnt-geiger-dockerized/volumes/mosquitto/certs/*
 # ── Log files ────────────────────────────────────────────────────────────────
 ngnt-geiger-dockerized/log/mosquitto/*.log
 !ngnt-geiger-dockerized/log/mosquitto/.gitkeep
+
+# ── Stale / duplicate runtime data ──────────────────────────────────────────
+ngnt-geiger-dockerized/volumes/volumes/
 
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
