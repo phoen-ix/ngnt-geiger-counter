@@ -38,6 +38,8 @@ services:
             MARIADB_PASSWORD: ${MARIADB_PASSWORD}
             MARIADB_DATABASE: ${MARIADB_DATABASE}
             MARIADB_TIMEZONE: ${MARIADB_TIMEZONE}
+            # Upgrade an existing data directory in place when the image moves to a newer major (dump first).
+            MARIADB_AUTO_UPGRADE: "1"
         volumes:
             - ./volumes/mariadb:/var/lib/mysql
             - ./dbinit.sql:/docker-entrypoint-initdb.d/init.sql:ro

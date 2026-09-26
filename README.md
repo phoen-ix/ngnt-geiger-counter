@@ -227,6 +227,13 @@ Create user accounts, set peppers, and register devices via the Devices page. Se
 - **Logged-in users** see their own devices plus public devices
 - **Admins** see all devices
 
+### Upgrading MariaDB
+
+The MariaDB version comes from `DOCKER_IMAGE_MARIADB_TAG` in `.env` (`.env.example` ships `12.3.3`); an existing
+install keeps its own value until you change it. The service sets `MARIADB_AUTO_UPGRADE=1`, so after raising the tag
+the container upgrades `volumes/mariadb` in place on its first start. Take a verified dump first
+(`docker compose exec ngnt-geiger-mariadb mariadb-dump ...`) — a major-version upgrade cannot be rolled back.
+
 ### Reset (wipe all data and start fresh)
 
 ```bash
@@ -239,7 +246,7 @@ docker compose up -d
 
 | Container | Image / Dockerfile | Exposes | Role |
 |-----------|-------------------|---------|------|
-| `ngnt-geiger-mariadb` | `mariadb:11.4.10` | 3306 (internal) | Persistent storage |
+| `ngnt-geiger-mariadb` | `mariadb:12.3.3` | 3306 (internal) | Persistent storage |
 | `ngnt-geiger-mosquitto` | `DockerfileMosquitto` (eclipse-mosquitto + openssl) | 8883 (TLS), 2883 -> 1883 (plain) | MQTT broker with TLS + auto-reload |
 | `ngnt-geiger-subscriber` | `DockerfileSubscriber` (Python 3.13-slim) | — | Async MQTT subscriber -> DB |
 | `ngnt-geiger-flask` | `DockerfileFlask` (Python 3.13-slim) | 1880 -> 8000 | Flask web dashboard + user management |
