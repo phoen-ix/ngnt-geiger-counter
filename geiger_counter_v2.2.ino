@@ -20,7 +20,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <DNSServer.h>
-#include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager v2.0.15-rc.1
+#include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager v2.0.17
 #include <ezTime.h>              //https://github.com/ropg/ezTime v0.8.3
 #include <PubSubClient.h>        //https://pubsubclient.knolleary.net/ v2.8.0
 #include <ArduinoJson.h>         //https://arduinojson.org/ v6 or v7

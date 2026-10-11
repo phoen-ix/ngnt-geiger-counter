@@ -96,12 +96,12 @@ Install these via the Arduino IDE Library Manager:
 | Library | Version tested |
 |---------|---------------|
 | [LiquidCrystal_I2C](https://github.com/johnrickman/LiquidCrystal_I2C) | any |
-| [WiFiManager](https://github.com/tzapu/WiFiManager) | 2.0.15-rc.1 |
+| [WiFiManager](https://github.com/tzapu/WiFiManager) | 2.0.17 |
 | [ezTime](https://github.com/ropg/ezTime) | 0.8.3 |
 | [PubSubClient](https://pubsubclient.knolleary.net/) | 2.8.0 |
-| [ArduinoJson](https://arduinojson.org/) | v6 or v7 |
+| [ArduinoJson](https://arduinojson.org/) | 7.4.3 (6.21.6 also builds) |
 
-Board support: **ESP8266 Arduino core >= 3.0.0** (`esp8266` board package in the IDE).
+Board support: **ESP8266 Arduino core >= 3.0.0** (`esp8266` board package in the IDE); built against 3.1.2 for the Wemos D1 R2 & mini.
 
 ### Configuration
 
