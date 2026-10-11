@@ -1,4 +1,4 @@
-FROM python:3.14.7-slim-trixie
+FROM python:3.14.8-slim-trixie
 
 COPY scripts/pm2/requirements.txt /opt/requirements.txt
 RUN pip install --no-cache-dir -r /opt/requirements.txt && \
