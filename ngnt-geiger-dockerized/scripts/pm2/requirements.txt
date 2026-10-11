@@ -1,2 +1,2 @@
-aiomqtt==2.5.0
+aiomqtt==2.5.1
 aiomysql==0.3.2

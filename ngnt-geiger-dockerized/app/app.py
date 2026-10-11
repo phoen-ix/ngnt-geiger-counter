@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ['FLASK_SECRET_KEY']
 csrf = CSRFProtect(app)
-limiter = Limiter(get_remote_address, app=app, default_limits=[])
+limiter = Limiter(get_remote_address, app=app, storage_uri="memory://", default_limits=[])
 
 
 # ── Template context ─────────────────────────────────────────────────────────
