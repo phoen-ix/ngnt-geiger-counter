@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-03-01 (v3.3 — firmware v2.2, Mosquitto reload fix)
+Last updated: 2026-10-17 (v3.4 — security audit hardening, MariaDB 12.3 LTS, Python 3.15)
 
 ---
 

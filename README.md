@@ -2,7 +2,7 @@
 
 A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case.
 
-**v3.3** — Firmware v2.2: auto-generated pepper, info screen replaces reconnect portal. Security audit hardening: DB connection pooling, pinned dependencies, credential files removed from git. Fixed Mosquitto reload for device provisioning. MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
+**v3.4** — Security audit hardening: DB connection pooling, pinned dependencies, credential files removed from git. MariaDB 12.3 LTS, Python 3.15 images, CI (pytest + pip-audit). Firmware v2.2: auto-generated pepper, info screen replaces reconnect portal. Fixed Mosquitto reload for device provisioning. MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
