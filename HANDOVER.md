@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-10-17 (v3.4 — security audit hardening, MariaDB 12.3 LTS, Python 3.15)
+Last updated: 2026-10-23 (v3.4 — security audit hardening, MariaDB 12.3 LTS, Python 3.15)
 
 ---
 
@@ -27,7 +27,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Admin page | Done | Global settings, SMTP config, user management |
 | Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
 | Password reset | Done | Token-based, email via SMTP |
-| Test suite | Done | 98 pytest tests, mocked DB, no external deps |
+| Test suite | Done | pytest, mocked DB, no external deps |
 | MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain) |
 | Data export (CSV/JSON) | Not started | |
 | Grafana integration | Not started | |
@@ -53,16 +53,16 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 │                                                         │
 │  ┌──────────────┐     ┌────────────────┐                │
 │  │  Mosquitto   │────▶│  Python        │                │
-│  │  172.18.1.30 │     │  subscriber    │                │
-│  │  :8883 (TLS) │     │  172.18.1.40   │                │
+│  │  10.188.1.30 │     │  subscriber    │                │
+│  │  :8883 (TLS) │     │  10.188.1.40   │                │
 │  │  :1883 (int) │                                       │
 │  └──────────────┘     └───────┬────────┘                │
 │         ▲                     │ INSERT                  │
 │         │ .reload flag        ▼                         │
 │         │              ┌────────────────┐               │
 │  ┌──────┴───────┐      │    MariaDB     │               │
-│  │  Flask       │      │  172.18.1.20   │               │
-│  │  172.18.1.10 │◀─────┘                │               │
+│  │  Flask       │      │  10.188.1.20   │               │
+│  │  10.188.1.10 │◀─────┘                │               │
 │  │  → host:1880 │ SELECT                │               │
 │  └──────────────┘                                       │
 └─────────────────────────────────────────────────────────┘
@@ -101,7 +101,7 @@ The topic prefix is the device's MQTT username (e.g. `geiger_aabbcc`). The Pytho
 
 ## Database schema
 
-Database name: `ngnt-geigercounter` (configurable via `MARIADB_DATABASE` in `.env`)
+Database name: `ngnt-geigercounter`. `dbinit.sql` creates and fills it by that name, so `MARIADB_DATABASE` in `.env` must stay `ngnt-geigercounter`.
 
 ### `users` table
 
@@ -248,7 +248,7 @@ Single-file Flask app with all routes. Key components:
 
 ### `app/helpers.py`
 
-- `get_db()`: returns a PyMySQL connection (per-request, synchronous)
+- `get_db()`: returns a PyMySQL connection from a `DBUtils.PooledDB` pool (synchronous; `close()` hands it back)
 - `get_settings()`: loads all settings from DB
 - `login_required`, `admin_required`: decorators checking `session['user_id']` / `session['role']`
 - `derive_mqtt_credentials(mac, pepper)`: HMAC-SHA256 credential derivation matching firmware
@@ -257,7 +257,7 @@ Single-file Flask app with all routes. Key components:
 
 ### `app/templates/`
 
-9 Jinja2 templates extending `base.html`:
+Jinja2 templates; every page extends `base.html`:
 - `base.html` — skeleton with nav (conditional on auth state), flash messages
 - `login.html`, `register.html`, `forgot_password.html`, `reset_password.html` — auth forms
 - `dashboard.html` — range bar, device dropdown, cards, Chart.js chart, measurements table
@@ -301,7 +301,7 @@ Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 
 ### `tests/` — pytest test suite
 
-98 tests run on the host without Docker or external dependencies. All DB access is mocked via `MockCursor`/`MockDB` classes in `testutils.py`.
+The tests run on the host without Docker or external dependencies. All DB access is mocked via `MockCursor`/`MockDB` classes in `testutils.py`.
 
 **Key design decisions:**
 
@@ -416,6 +416,6 @@ docker exec -it ngnt-geiger-mariadb \
 ```bash
 cd ngnt-geiger-dockerized
 docker compose down
-rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
+sudo rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
 docker compose up -d
 ```

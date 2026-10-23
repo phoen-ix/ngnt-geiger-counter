@@ -1,8 +1,8 @@
 # not great, not terrible — geiger counter
 
-A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case.
+A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case. It publishes counts per minute over MQTT (TLS) to a self-hosted Docker stack: Mosquitto, a Python subscriber, MariaDB and a Flask web dashboard with user accounts and web-based device provisioning.
 
-**v3.4** — Security audit hardening: DB connection pooling, pinned dependencies, credential files removed from git. MariaDB 12.3 LTS, Python 3.15 images, CI (pytest + pip-audit). Firmware v2.2: auto-generated pepper, info screen replaces reconnect portal. Fixed Mosquitto reload for device provisioning. MQTT over TLS. Comprehensive test suite (98 pytest tests). User accounts, web-based device provisioning, Flask dashboard, per-user visibility, admin panel with SMTP password reset, session security hardening, CSRF protection, rate limiting.
+**Status: v3.4.** The hardware design, firmware v2.2 (MQTT over TLS, auto-generated pepper, info screen on MQTT failure) and the dockerized backend (dashboard, per-user visibility, device provisioning, admin panel with SMTP password reset, CSRF protection, rate limiting) are done; MariaDB 12.3 LTS, Python 3.15, CI runs pytest and pip-audit. Open ideas are at the end.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -13,6 +13,7 @@ A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 
 ```
 ngnt-geiger-counter/
 ├── geiger_counter_v2.2.ino          # ESP8266 firmware (Wemos D1 R2)
+├── HANDOVER.md                      # Technical handover: design, schema, decisions
 └── ngnt-geiger-dockerized/
     ├── app/                         # Flask web application
     │   ├── app.py                   # Routes, admin bootstrap
@@ -20,11 +21,11 @@ ngnt-geiger-counter/
     │   ├── requirements.txt         # Production deps (pinned)
     │   ├── requirements-dev.txt     # Adds pytest for local testing
     │   ├── static/style.css
-    │   └── templates/               # Jinja2 templates (9 files)
-    ├── tests/                       # pytest test suite (98 tests)
+    │   └── templates/               # Jinja2 templates
+    ├── tests/                       # pytest suite (mocked DB)
     │   ├── conftest.py              # Fixtures (app, client, auth, admin)
     │   ├── testutils.py             # MockCursor, MockDB, queue helpers
-    │   └── test_*.py                # 7 test modules
+    │   └── test_*.py
     ├── pytest.ini
     ├── dbinit.sql                   # DB schema — auto-applied on first start
     ├── config/                      # Static config for Mosquitto & MariaDB
@@ -205,8 +206,8 @@ On first start:
 **3. Get the admin password**
 ```bash
 docker compose logs ngnt-geiger-flask | grep Password
-# or
-cat data/admin_initial_password.txt
+# or (the file belongs to root, mode 0600)
+docker compose exec ngnt-geiger-flask cat /app/data/admin_initial_password.txt
 ```
 
 **4. Log in and configure**
@@ -236,9 +237,11 @@ the container upgrades `volumes/mariadb` in place on its first start. Take a ver
 
 ### Reset (wipe all data and start fresh)
 
+The containers write these directories as root and the MariaDB user, hence `sudo`:
+
 ```bash
 docker compose down
-rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
+sudo rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
 docker compose up -d
 ```
 
@@ -251,7 +254,7 @@ docker compose up -d
 | `ngnt-geiger-subscriber` | `DockerfileSubscriber` (`python:3.15.1-slim-trixie`) | — | Async MQTT subscriber -> DB |
 | `ngnt-geiger-flask` | `DockerfileFlask` (`python:3.15.1-slim-trixie`) | 1880 -> 8000 | Flask web dashboard + user management |
 
-All containers share the internal bridge network `172.18.1.0/24` (configurable via `IPV4_NETWORK` in `.env`).
+All containers share the internal bridge network `10.188.1.0/24` (`IPV4_NETWORK` in `.env`). It must not overlap any other Docker network on the host; the subscriber reaches MariaDB (`.20`) and Mosquitto (`.30`) by these fixed addresses.
 
 ---
 
@@ -262,109 +265,10 @@ The test suite runs on the host (no Docker needed) and uses mocked DB connection
 ```bash
 cd ngnt-geiger-dockerized
 pip install -r app/requirements-dev.txt
-FLASK_TESTING=1 python -m pytest tests/ -v
+python -m pytest -v
 ```
 
-98 tests cover all routes and middleware:
-
-<details>
-<summary><b>test_helpers</b> — 18 tests</summary>
-
-- `test_derive_mqtt_credentials_known_values`
-- `test_derive_mqtt_credentials_case_insensitive_mac`
-- `test_derive_mqtt_credentials_dash_separator`
-- `test_derive_mqtt_credentials_username_format`
-- `test_derive_mqtt_credentials_different_pepper_different_password`
-- `test_provision_device_creates_entry`
-- `test_provision_device_creates_reload_flag`
-- `test_provision_device_idempotent`
-- `test_provision_device_multiple_devices`
-- `test_unprovision_device_removes_entry`
-- `test_unprovision_device_creates_reload_flag`
-- `test_unprovision_device_preserves_others`
-- `test_unprovision_device_nonexistent`
-- `test_get_settings_returns_dict`
-- `test_login_required_redirects` / `test_login_required_passes`
-- `test_admin_required_redirects_no_session` / `test_admin_required_redirects_non_admin` / `test_admin_required_passes`
-- `test_send_reset_email_no_smtp_host` / `test_send_reset_email_success` / `test_send_reset_email_no_tls` / `test_send_reset_email_failure`
-</details>
-
-<details>
-<summary><b>test_auth</b> — 17 tests</summary>
-
-- `test_login_get_renders_form`
-- `test_login_valid_credentials`
-- `test_login_invalid_password`
-- `test_login_nonexistent_user`
-- `test_login_sets_session_permanent`
-- `test_register_get_renders_form`
-- `test_register_disabled`
-- `test_register_success`
-- `test_register_username_taken` / `test_register_username_too_short` / `test_register_username_too_long` / `test_register_username_bad_chars`
-- `test_register_password_too_short` / `test_register_password_mismatch` / `test_register_empty_fields`
-- `test_logout_clears_session`
-- `test_forgot_password_get` / `test_forgot_password_valid_user_with_email` / `test_forgot_password_user_without_email` / `test_forgot_password_nonexistent_user` / `test_forgot_password_cleans_expired_tokens`
-- `test_reset_password_get_valid_token` / `test_reset_password_get_invalid_token`
-- `test_reset_password_post_success` / `test_reset_password_post_too_short` / `test_reset_password_post_mismatch`
-</details>
-
-<details>
-<summary><b>test_dashboard</b> — 8 tests</summary>
-
-- `test_dashboard_anonymous_public_only`
-- `test_dashboard_logged_in_own_and_public`
-- `test_dashboard_admin_sees_all`
-- `test_dashboard_empty_state`
-- `test_dashboard_range_filter_1h`
-- `test_dashboard_range_invalid_defaults_24h`
-- `test_dashboard_device_filter`
-- `test_dashboard_device_filter_invalid_ignored`
-</details>
-
-<details>
-<summary><b>test_devices</b> — 10 tests</summary>
-
-- `test_devices_requires_login`
-- `test_devices_get_lists_devices` / `test_devices_get_empty`
-- `test_add_device_success` / `test_add_device_invalid_mac` / `test_add_device_no_pepper` / `test_add_device_duplicate`
-- `test_update_device_success`
-- `test_delete_device_success` / `test_delete_device_nonexistent` / `test_delete_device_calls_unprovision`
-</details>
-
-<details>
-<summary><b>test_account</b> — 10 tests</summary>
-
-- `test_account_requires_login`
-- `test_account_get_renders`
-- `test_update_profile_email` / `test_update_profile_pepper` / `test_update_profile_public_toggle`
-- `test_change_password_success` / `test_change_password_wrong_current` / `test_change_password_too_short` / `test_change_password_mismatch`
-- `test_change_password_removes_initial_file`
-</details>
-
-<details>
-<summary><b>test_admin</b> — 12 tests</summary>
-
-- `test_admin_requires_login` / `test_admin_requires_admin_role`
-- `test_admin_get_renders`
-- `test_save_settings` / `test_save_smtp`
-- `test_toggle_role_success` / `test_toggle_role_cannot_change_self`
-- `test_toggle_public`
-- `test_delete_user_success` / `test_delete_user_cannot_delete_self` / `test_delete_user_unprovisions_all_devices`
-- `test_invalid_target_user_id`
-</details>
-
-<details>
-<summary><b>test_middleware</b> — 7 tests</summary>
-
-- `test_before_request_user_deleted_clears_session`
-- `test_before_request_pw_version_mismatch`
-- `test_before_request_role_refreshed`
-- `test_before_request_session_timeout`
-- `test_before_request_db_error_clears_session`
-- `test_before_request_skips_static`
-- `test_csrf_rejects_without_token`
-- `test_rate_limiting_enforced`
-</details>
+It covers every route and the middleware (session checks, CSRF, rate limiting); `python -m pytest --collect-only -q` lists the tests.
 
 ---
 
