@@ -2,7 +2,9 @@
 
 A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266), and a 20x4 I2C LCD — housed in a 3D-printed case. It publishes counts per minute over MQTT (TLS) to a self-hosted Docker stack: Mosquitto, a Python subscriber, MariaDB and a Flask web dashboard with user accounts and web-based device provisioning.
 
-**Status: v3.4.** The hardware design, firmware v2.2 (MQTT over TLS, auto-generated pepper, info screen on MQTT failure) and the dockerized backend (dashboard, per-user visibility, device provisioning, admin panel with SMTP password reset, CSRF protection, rate limiting) are done; MariaDB 12.3 LTS, Python 3.15, CI runs pytest and pip-audit. Open ideas are at the end.
+<img src="docs/screenshots/dashboard.png" alt="Web dashboard: CPM, dose rate and online status of the balcony counter, a 24-hour chart and the latest readings" width="800">
+
+**Status: v3.4.** The hardware design, firmware v2.2 (MQTT over TLS, auto-generated pepper, info screen on MQTT failure) and the dockerized backend (dashboard, per-user visibility, device provisioning, admin panel with SMTP password reset, CSRF protection, rate limiting) are done; MariaDB 12.3 LTS, Python 3.15, CI runs pytest, pip-audit and the screenshot tour. Open ideas are at the end.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -14,6 +16,7 @@ A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 
 ngnt-geiger-counter/
 ├── geiger_counter_v2.2.ino          # ESP8266 firmware (Wemos D1 R2)
 ├── HANDOVER.md                      # Technical handover: design, schema, decisions
+├── docs/screenshots/                # Web UI screenshots + gallery (generated)
 └── ngnt-geiger-dockerized/
     ├── app/                         # Flask web application
     │   ├── app.py                   # Routes, admin bootstrap
@@ -26,12 +29,15 @@ ngnt-geiger-counter/
     │   ├── conftest.py              # Fixtures (app, client, auth, admin)
     │   ├── testutils.py             # MockCursor, MockDB, queue helpers
     │   └── test_*.py
+    ├── e2e/                         # Playwright docs tour (own Node package)
     ├── pytest.ini
     ├── dbinit.sql                   # DB schema — auto-applied on first start
     ├── config/                      # Static config for Mosquitto & MariaDB
     ├── docker-compose.yml
+    ├── docker-compose.e2e.yml       # Overlay for throwaway stacks (docs tour)
     ├── Dockerfiles/
     ├── scripts/
+    │   ├── docs-screenshots.sh      # Regenerates docs/screenshots/
     │   ├── mosquitto/               # Container entrypoint (passwords + reload watcher)
     │   └── pm2/                     # Python MQTT→DB subscriber
     ├── data/                        # Runtime data (admin initial password)
@@ -155,6 +161,10 @@ v3.0 replaces the manual `add-device.sh` script with web-based provisioning:
 
 **How it works:** Both firmware and server compute `username = geiger_<last 6 hex of MAC>` and `password = HMAC-SHA256(pepper, mac)[:16]`. The pepper is stored per-user, so different users can have different peppers.
 
+<img src="docs/screenshots/account.png" alt="Account page: email, MQTT pepper, public/private profile and the change-password form" width="800">
+
+<img src="docs/screenshots/devices.png" alt="Devices page: the register-device form and two registered counters, one online and one offline, with MAC, last seen and provisioning state" width="800">
+
 ---
 
 ## Backend — `ngnt-geiger-dockerized/`
@@ -218,6 +228,8 @@ Navigate to `http://<your-server>:1880`, log in as `admin`, and:
 - Configure SMTP settings (Admin page) if you want password reset emails
 - Adjust global settings (timezone, alert thresholds, session timeout, registration open/disabled, etc.)
 
+<img src="docs/screenshots/admin.png" alt="Admin page: global settings, SMTP settings for password-reset email, and the user list with role, visibility and device count" width="800">
+
 **5. Register devices**
 
 Create user accounts, set peppers, and register devices via the Devices page. See "Device provisioning" above.
@@ -227,6 +239,10 @@ Create user accounts, set peppers, and register devices via the Devices page. Se
 - **Anonymous visitors** see devices belonging to users with public profiles
 - **Logged-in users** see their own devices plus public devices
 - **Admins** see all devices
+
+Pick one counter in the **Device** dropdown to see only its readings; an unplugged one shows as offline:
+
+<img src="docs/screenshots/dashboard-device-offline.png" alt="Dashboard filtered to the basement counter: its last reading two days ago, status offline, no readings in the last 24 hours" width="800">
 
 ### Upgrading MariaDB
 
@@ -269,6 +285,20 @@ python -m pytest -v
 ```
 
 It covers every route and the middleware (session checks, CSRF, rate limiting); `python -m pytest --collect-only -q` lists the tests.
+
+---
+
+## Screenshots
+
+Every screenshot here comes from the docs tour in `ngnt-geiger-dockerized/e2e/docs/`: it starts a throwaway Flask + MariaDB stack, seeds fictional users, three counters and a day of readings, and photographs each screen. The [gallery](docs/screenshots/README.md) shows them all with a line on what each screen does.
+
+```bash
+cd ngnt-geiger-dockerized/e2e && npm ci && npx playwright install chromium && cd ..
+scripts/docs-screenshots.sh                          # writes ../docs/screenshots/*.png
+PORT_BASE=24800 scripts/docs-screenshots.sh /tmp/shots   # another port / output dir
+```
+
+It needs Docker and Node 26, runs as compose project `ngnt-geiger-counter_docs` on `127.0.0.1:${PORT_BASE:-1880}`, reads `.env.example` (never `.env`) and keeps its data in named volumes, so it does not touch a local instance in the same checkout — pass another `PORT_BASE` if that one uses port 1880. The readings end at the start of the current UTC hour, so a run in another hour changes the dashboard's timestamps. CI runs the tour on every push as a render check; the **Docs screenshots** workflow (Actions, manual) returns the PNGs as an artifact.
 
 ---
 

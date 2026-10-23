@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-10-23 (v3.4 — security audit hardening, MariaDB 12.3 LTS, Python 3.15)
+Last updated: 2026-10-23 (v3.4 — security audit hardening, MariaDB 12.3 LTS, Python 3.15; docs screenshot tour)
 
 ---
 
@@ -28,6 +28,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
 | Password reset | Done | Token-based, email via SMTP |
 | Test suite | Done | pytest, mocked DB, no external deps |
+| Docs screenshot tour | Done | Playwright in `ngnt-geiger-dockerized/e2e/docs/`, run by `ngnt-geiger-dockerized/scripts/docs-screenshots.sh` (README "Screenshots") |
 | MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain) |
 | Data export (CSV/JSON) | Not started | |
 | Grafana integration | Not started | |

@@ -1,0 +1,12 @@
+{
+  "name": "ngnt-geiger-counter-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs": "playwright test -c playwright.docs.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "chart.js": "4.4.0"
+  }
+}

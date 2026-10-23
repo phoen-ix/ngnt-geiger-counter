@@ -1,0 +1,71 @@
+# Throwaway-stack overlay for the docs tour (scripts/docs-screenshots.sh) and
+# later e2e runs. Always with an explicit project name, ngnt-geiger-counter_docs
+# or ngnt-geiger-counter_e2e, and `--env-file .env.example` so a local .env never
+# leaks in:
+#
+#   COMPOSE_PROJECT_NAME=ngnt-geiger-counter_e2e docker compose --env-file .env.example \
+#     -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait \
+#     ngnt-geiger-flask ngnt-geiger-mariadb
+#
+# Against docker-compose.yml: container names carry the project name; ports bind
+# 127.0.0.1 only (web E2E_WEB_PORT, MQTT/TLS E2E_MQTT_PORT); MariaDB, Flask's
+# data/ and its Mosquitto config dir are named volumes and the app is mounted
+# read-only at /src, so nothing is written into the checkout; the network drops
+# its fixed bridge name (IPV4_NETWORK must still be a free /24); Flask and
+# MariaDB get healthchecks for `up --wait`. Mosquitto and the subscriber still
+# bind-mount the checkout's config/, log/ and volumes/ - start them only from a
+# clean clone. Tear down with `down -v --remove-orphans --rmi local`.
+services:
+    ngnt-geiger-flask:
+        container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-flask
+        ports: !override
+            - 127.0.0.1:${E2E_WEB_PORT:-1880}:8000
+        working_dir: /src
+        volumes: !override
+            - ./app:/src:ro
+            - flask-data:/app/data
+            - mosquitto-config:/app/mosquitto-config
+        depends_on: !override
+            ngnt-geiger-mariadb:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/')"]
+            interval: 2s
+            timeout: 5s
+            retries: 60
+        restart: "no"
+
+    ngnt-geiger-mariadb:
+        container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-mariadb
+        volumes: !override
+            - mariadb:/var/lib/mysql
+            - ./dbinit.sql:/docker-entrypoint-initdb.d/init.sql:ro
+            - ./config/mariadb/event-scheduler.cnf:/etc/mysql/conf.d/event-scheduler.cnf:ro
+        healthcheck:
+            test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+            interval: 2s
+            timeout: 5s
+            retries: 90
+        restart: "no"
+
+    ngnt-geiger-mosquitto:
+        container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-mosquitto
+        ports: !override
+            - 127.0.0.1:${E2E_MQTT_PORT:-1888}:8883
+        restart: "no"
+
+    ngnt-geiger-subscriber:
+        container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-subscriber
+        restart: "no"
+
+networks:
+    ngnt-geiger-network: !override
+        driver: bridge
+        ipam:
+            config:
+                - subnet: ${IPV4_NETWORK}.0/24
+
+volumes:
+    mariadb:
+    flask-data:
+    mosquitto-config:
