@@ -289,7 +289,7 @@ Enhanced from v2.0:
 
 ### `Dockerfiles/DockerfileFlask`
 
-`python:3.15.0-slim-trixie` + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, DBUtils, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker.
+`python:3.15.1-slim-trixie` + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, DBUtils, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker.
 
 ### `Dockerfiles/DockerfileMosquitto`
 
@@ -350,8 +350,8 @@ Unchanged from v2.0. Uses `aiomqtt` + `aiomysql`.
 |-------|---------|
 | `mariadb` | 12.3.3 |
 | `eclipse-mosquitto` | 2.1.2-alpine |
-| `python` (Flask) | 3.15.0-slim-trixie |
-| `python` (subscriber) | 3.15.0-slim-trixie |
+| `python` (Flask) | 3.15.1-slim-trixie |
+| `python` (subscriber) | 3.15.1-slim-trixie |
 
 ---
 
