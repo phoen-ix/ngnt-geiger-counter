@@ -18,6 +18,7 @@ OUT="${1:-$APP/../docs/screenshots}"
 OUT="$(mkdir -p "$OUT" && cd "$OUT" && pwd)"
 cd "$APP"
 ARTIFACTS="${ARTIFACTS:-$(mktemp -d)}"
+mkdir -p "$ARTIFACTS"
 PORT_BASE="${PORT_BASE:-1880}"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ngnt-geiger-counter_docs}"
 
