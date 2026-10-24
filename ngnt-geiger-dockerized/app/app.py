@@ -111,9 +111,11 @@ bootstrap_admin_with_retry()
 
 # ── Timezone helper ──────────────────────────────────────────────────────────
 
-def utc_to_local(utc_str: str, tz_name: str) -> str:
+def utc_to_local(utc: datetime | str, tz_name: str) -> str:
     from zoneinfo import ZoneInfo
-    dt = datetime.strptime(utc_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+    if isinstance(utc, str):
+        utc = datetime.strptime(utc, '%Y-%m-%d %H:%M:%S')
+    dt = utc.replace(tzinfo=timezone.utc)
     try:
         local = dt.astimezone(ZoneInfo(tz_name))
     except KeyError:
@@ -123,11 +125,7 @@ def utc_to_local(utc_str: str, tz_name: str) -> str:
 
 def localize_measured_at(row: dict, tz_name: str) -> None:
     """Add 'measured_at_local' key to a measurement dict."""
-    ma = row['measured_at']
-    row['measured_at_local'] = utc_to_local(
-        ma.strftime('%Y-%m-%d %H:%M:%S') if isinstance(ma, datetime) else str(ma),
-        tz_name,
-    )
+    row['measured_at_local'] = utc_to_local(row['measured_at'], tz_name)
 
 
 def is_device_online(device: dict, offline_timeout: int) -> bool:
@@ -496,9 +494,13 @@ def devices():
         return redirect(url_for('devices'))
 
     # GET
+    display_tz = get_settings(db).get('display_timezone', 'Europe/Vienna')
     with db.cursor() as cur:
         cur.execute("SELECT * FROM devices WHERE user_id = %s ORDER BY device_id", (user_id,))
         user_devices = cur.fetchall()
+    for dev in user_devices:
+        if dev['last_seen']:
+            dev['last_seen'] = utc_to_local(dev['last_seen'], display_tz)
 
     db.close()
     return render_template('devices.html', devices=user_devices, user_pepper=user_pepper)
@@ -649,6 +651,9 @@ def admin():
             "FROM users u ORDER BY u.id"
         )
         users = cur.fetchall()
+    display_tz = settings.get('display_timezone', 'Europe/Vienna')
+    for u in users:
+        u['created_at'] = utc_to_local(u['created_at'], display_tz)
 
     db.close()
     return render_template('admin.html', settings=settings, users=users)

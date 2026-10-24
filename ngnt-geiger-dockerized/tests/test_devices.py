@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from tests.testutils import queue_before_request
+from tests.testutils import queue_before_request, queue_settings
 
 
 # ── Auth requirement ────────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ def test_devices_get_lists_devices(auth_client, mock_cursor):
     queue_before_request(mock_cursor)
     # SELECT pepper
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    queue_settings(mock_cursor)
     # SELECT devices
     mock_cursor.add_response(fetchall=[
         {'id': 1, 'device_id': 'geiger_aabbcc', 'display_name': 'Kitchen',
@@ -30,11 +31,14 @@ def test_devices_get_lists_devices(auth_client, mock_cursor):
     assert resp.status_code == 200
     assert b'geiger_aabbcc' in resp.data
     assert b'Kitchen' in resp.data
+    # last_seen is stored in UTC and shown in display_timezone (Europe/Vienna)
+    assert b'2026-03-01 13:00:00' in resp.data
 
 
 def test_devices_get_empty(auth_client, mock_cursor):
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
 
     resp = auth_client.get('/devices')
@@ -69,9 +73,10 @@ def test_add_device_invalid_mac(auth_client, mock_cursor):
     # POST: before_request + pepper check
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
-    # Redirect to GET /devices: before_request + pepper + device list
+    # Redirect to GET /devices: before_request + pepper + settings + device list
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
 
     resp = auth_client.post('/devices', data={
@@ -86,9 +91,10 @@ def test_add_device_no_pepper(auth_client, mock_cursor):
     # POST: before_request + pepper check
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': None})
-    # Redirect to GET /devices: before_request + pepper + device list
+    # Redirect to GET /devices: before_request + pepper + settings + device list
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': None})
+    queue_settings(mock_cursor)
 
     resp = auth_client.post('/devices', data={
         'action': 'add_device',
@@ -103,9 +109,10 @@ def test_add_device_duplicate(auth_client, mock_cursor):
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
     mock_cursor.add_response(fetchone={'id': 99})
-    # Redirect to GET /devices: before_request + pepper + device list
+    # Redirect to GET /devices: before_request + pepper + settings + device list
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
 
     resp = auth_client.post('/devices', data={

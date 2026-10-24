@@ -1,5 +1,6 @@
 """Tests for admin routes — settings, SMTP, user management."""
 
+from datetime import datetime
 from unittest.mock import patch
 
 from tests.testutils import queue_before_request, queue_settings
@@ -32,7 +33,7 @@ def test_admin_get_renders(admin_client, mock_cursor):
          'created_at': '2026-01-01 00:00:00'},
         {'id': 2, 'username': 'user1', 'email': None,
          'role': 'user', 'public': True, 'device_count': 1,
-         'created_at': '2026-02-01 00:00:00'},
+         'created_at': datetime(2026, 7, 1, 12, 0)},
     ])
 
     resp = admin_client.get('/admin')
@@ -40,6 +41,9 @@ def test_admin_get_renders(admin_client, mock_cursor):
     assert b'Global Settings' in resp.data
     assert b'admin' in resp.data
     assert b'user1' in resp.data
+    # created_at is stored in UTC and shown in display_timezone (Europe/Vienna)
+    assert b'2026-01-01 01:00:00' in resp.data
+    assert b'2026-07-01 14:00:00' in resp.data
 
 
 # ── Save settings ───────────────────────────────────────────────────────────

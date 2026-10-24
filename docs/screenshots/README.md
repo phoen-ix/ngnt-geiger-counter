@@ -61,7 +61,7 @@ The page the emailed link opens (`/reset-password/<token>`).
 ## Devices
 
 `/devices`: register a counter by its WiFi MAC address (the server derives its MQTT login from the MAC and your
-pepper and provisions Mosquitto), rename or delete your counters, and see their status and last contact (UTC).
+pepper and provisions Mosquitto), rename or delete your counters, and see their status and last contact (in the display timezone).
 
 <img src="devices.png" alt="Devices page: the register-device form and two counters, one online and one offline, with MAC, last seen and provisioning state" width="800">
 

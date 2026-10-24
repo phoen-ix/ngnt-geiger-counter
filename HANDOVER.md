@@ -174,7 +174,7 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 
 | Key | Default | Used by |
 |-----|---------|---------|
-| `display_timezone` | `Europe/Vienna` | Dashboard timestamp display |
+| `display_timezone` | `Europe/Vienna` | Timestamp display (dashboard, devices, admin) |
 | `offline_timeout_minutes` | `5` | Dashboard offline detection |
 | `default_cpm_factor` | `0.0057` | Admin page placeholder |
 | `default_alert_threshold` | `0.5` | Dashboard dose rate card |
