@@ -15,8 +15,8 @@ counters of public users, signed-in users also their own, admins all of them. Th
 
 ## Dashboard — phone
 
-The same page on a phone (390 px wide): the header and the form fields stack, the cards share a row, and wide tables
-scroll inside their box.
+The same page on a phone (390 px wide): the header and navigation stack, the range buttons wrap, the cards sit two per
+row, the chart turns square, and wide tables scroll inside their box.
 
 <img src="dashboard.mobile.png" alt="Dashboard on a phone: header and navigation stacked, range buttons, the four cards two per row, the chart and the first readings" width="390">
 
