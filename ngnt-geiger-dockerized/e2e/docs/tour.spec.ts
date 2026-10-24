@@ -167,6 +167,8 @@ test('dashboard', async ({ browser }, info) => {
   await expect(page.locator('header p')).toContainText('Last reading:')
   await expect(page.locator('.card-unit', { hasText: 'online' })).toBeVisible()
   await chartDrawn(page)
+  // The unit keeps its case (the other headers are upper-cased by CSS).
+  await expect(page.locator('th', { hasText: 'Sv/h' })).toHaveText('μSv/h', { useInnerText: true })
   // Header, cards, chart and the first rows of the table.
   await shoot(page, 'dashboard', { clipAbove: 'tbody tr:nth-child(8)' })
 })
