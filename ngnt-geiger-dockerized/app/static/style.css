@@ -196,7 +196,8 @@ tr:hover td { background: #1c2129; }
 .form-row label {
     font-size: 0.85rem;
     color: #8b949e;
-    min-width: 180px;
+    /* Fixed, so a long label wraps instead of pushing its field out of line. */
+    width: 200px;
     flex-shrink: 0;
 }
 .form-row input[type="text"],
@@ -212,6 +213,8 @@ tr:hover td { background: #1c2129; }
     font-size: 0.85rem;
     width: 260px;
 }
+/* As wide as the longest option, so none is cut off. */
+.form-row select { width: auto; min-width: 260px; }
 .form-row input:focus, .form-row select:focus {
     outline: none;
     border-color: #58a6ff;
@@ -275,7 +278,7 @@ td input:focus {
     align-items: stretch;
     gap: 6px;
 }
-.auth-form .form-row label { min-width: auto; }
+.auth-form .form-row label { width: auto; }
 .auth-form .form-row input { width: 100%; }
 .auth-form .btn { width: 100%; margin-top: 8px; }
 .auth-form p {

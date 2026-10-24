@@ -24,7 +24,7 @@
         </div>
         <div class="form-row">
             <label for="public">Public profile</label>
-            <select id="public" name="public" style="width:260px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;padding:6px 12px;font-size:0.85rem;">
+            <select id="public" name="public">
                 <option value="0"{% if not user['public'] %} selected{% endif %}>Private &mdash; only you see your devices</option>
                 <option value="1"{% if user['public'] %} selected{% endif %}>Public &mdash; anyone can see your devices</option>
             </select>

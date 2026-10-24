@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page, type TestInfo } from '@playwright/test'
 
 import { BASE, DEVICES, PEOPLE, RESET_TOKEN, type Sessions, type Who } from './seed'
 
@@ -124,6 +124,29 @@ async function shoot(page: Page, name: string, opts: { fullPage?: boolean; clipA
 
 const heading = (page: Page, text: string) => expect(page.getByRole('heading', { name: text })).toBeVisible()
 
+/** Each select is as wide as its longest option, so no option text is cut off. */
+async function selectsFit(selects: Locator): Promise<void> {
+  for (const select of await selects.all()) {
+    const [width, needed] = await select.evaluate((el: HTMLElement) => {
+      const width = el.offsetWidth
+      const prev = el.style.width
+      el.style.width = 'max-content'
+      const needed = el.offsetWidth
+      el.style.width = prev
+      return [width, needed]
+    })
+    expect(width, await select.getAttribute('id') ?? 'select').toBeGreaterThanOrEqual(needed)
+  }
+}
+
+/** Every form field starts at the same x, however long its label. */
+async function fieldsAligned(page: Page): Promise<void> {
+  const lefts = await page
+    .locator('.form-row > :nth-child(2)')
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().left))
+  expect(new Set(lefts).size).toBe(1)
+}
+
 /* --- signed out --------------------------------------------------------- */
 
 test('login', async ({ page }) => {
@@ -203,6 +226,8 @@ test('account', async ({ browser }, info) => {
   const page = await as(browser, info, 'lena')
   await page.goto('/account')
   await expect(page.locator('#pepper')).toHaveValue(PEOPLE.lena.pepper)
+  await selectsFit(page.locator('.form-row select'))
+  await fieldsAligned(page)
   await shoot(page, 'account', { fullPage: true })
 })
 
@@ -212,6 +237,8 @@ test('admin', async ({ browser }, info) => {
   await heading(page, 'Users')
   await expect(page.locator('tbody tr')).toHaveCount(1 + Object.keys(PEOPLE).length)
   await expect(page.locator('#smtp-host')).toHaveValue('smtp.geiger-demo.example')
+  await selectsFit(page.locator('.form-row select'))
+  await fieldsAligned(page)
   await shoot(page, 'admin', { fullPage: true })
 })
 
