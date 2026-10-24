@@ -7,6 +7,7 @@ import { defineConfig, devices } from '@playwright/test'
  * ../../docs/screenshots unless DOCS_SCREENSHOT_DIR says otherwise. */
 export default defineConfig({
   testDir: './docs',
+  globalSetup: './docs/global-setup.ts',
   timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

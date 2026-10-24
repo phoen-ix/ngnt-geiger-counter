@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
 
-import { BASE, DEVICES, PEOPLE, RESET_TOKEN, seedDemo, type Sessions, type Who } from './seed'
+import { BASE, DEVICES, PEOPLE, RESET_TOKEN, type Sessions, type Who } from './seed'
 
 /* The docs tour: one screenshot per screen (docs/screenshots/README.md is the
  * gallery) of the demo stack in ./seed.ts. Run it through
@@ -26,14 +26,10 @@ const CHART_VERSION = JSON.parse(readFileSync(path.join(CHART_DIR, 'package.json
 const CHART_URL = `https://cdn.jsdelivr.net/npm/chart.js@${CHART_VERSION}/dist/chart.umd.min.js`
 const ORIGIN = new URL(BASE).origin
 
-let sessions: Sessions
+// Seeded by ./global-setup.ts.
+const sessions: Sessions = JSON.parse(process.env.DOCS_SESSIONS ?? '{}')
 let pageErrors: string[] = []
 const opened: BrowserContext[] = []
-
-test.beforeAll(async () => {
-  test.setTimeout(180_000)
-  sessions = await seedDemo()
-})
 
 test.beforeEach(async ({ context, page }) => {
   pageErrors = []
