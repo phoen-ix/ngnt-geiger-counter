@@ -327,6 +327,7 @@ canvas { max-height: 280px; }
     .card { flex: 1 1 140px; min-width: 0; padding: 14px 16px 12px; }
     .form-row { flex-direction: column; align-items: stretch; gap: 6px; }
     .form-row label { width: auto; }
+    .form-row label.spacer { display: none; }
     .form-row input[type="text"],
     .form-row input[type="number"],
     .form-row input[type="password"],

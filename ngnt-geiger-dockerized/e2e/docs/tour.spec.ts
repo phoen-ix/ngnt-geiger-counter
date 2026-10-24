@@ -147,17 +147,22 @@ async function fieldsAligned(page: Page): Promise<void> {
   expect(new Set(lefts).size).toBe(1)
 }
 
-/** The page never scrolls sideways, and no field is squeezed too narrow to type in. */
+/** The page never scrolls sideways, no field is squeezed too narrow to type in,
+ *  and no blank spacer label leaves an empty line above a stacked button. */
 async function fitsPhone(page: Page): Promise<void> {
-  const { scrollWidth, innerWidth, narrowest } = await page.evaluate(() => ({
+  const { scrollWidth, innerWidth, narrowest, blankLabels } = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     innerWidth: window.innerWidth,
     narrowest: Math.min(
       ...[...document.querySelectorAll<HTMLElement>('input:not([type=hidden]), select')].map((el) => el.offsetWidth),
     ),
+    blankLabels: [...document.querySelectorAll<HTMLElement>('.form-row label')].filter(
+      (el) => el.offsetHeight > 0 && !el.textContent?.trim(),
+    ).length,
   }))
   expect(scrollWidth, page.url()).toBeLessThanOrEqual(innerWidth)
   expect(narrowest, page.url()).toBeGreaterThanOrEqual(100)
+  expect(blankLabels, page.url()).toBe(0)
 }
 
 /* --- signed out --------------------------------------------------------- */
