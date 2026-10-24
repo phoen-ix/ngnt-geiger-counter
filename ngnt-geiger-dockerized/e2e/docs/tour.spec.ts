@@ -147,6 +147,19 @@ async function fieldsAligned(page: Page): Promise<void> {
   expect(new Set(lefts).size).toBe(1)
 }
 
+/** The page never scrolls sideways, and no field is squeezed too narrow to type in. */
+async function fitsPhone(page: Page): Promise<void> {
+  const { scrollWidth, innerWidth, narrowest } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+    narrowest: Math.min(
+      ...[...document.querySelectorAll<HTMLElement>('input:not([type=hidden]), select')].map((el) => el.offsetWidth),
+    ),
+  }))
+  expect(scrollWidth, page.url()).toBeLessThanOrEqual(innerWidth)
+  expect(narrowest, page.url()).toBeGreaterThanOrEqual(100)
+}
+
 /* --- signed out --------------------------------------------------------- */
 
 test('login', async ({ page }) => {
@@ -242,3 +255,40 @@ test('admin', async ({ browser }, info) => {
   await shoot(page, 'admin', { fullPage: true })
 })
 
+/* --- phone (390 x 844) -------------------------------------------------- */
+
+test('phone: every page fits', async ({ browser, page }, info) => {
+  const phone = { width: 390, height: 844 }
+  await page.setViewportSize(phone)
+  for (const url of ['/login', '/register', '/forgot-password', `/reset-password/${RESET_TOKEN}`]) {
+    await page.goto(url)
+    await fitsPhone(page)
+  }
+  for (const [who, urls] of [
+    ['lena', ['/', `/?device=${DEVICES.basement.id}`, '/devices', '/account']],
+    ['admin', ['/admin']],
+  ] as const) {
+    const signedIn = await as(browser, info, who)
+    await signedIn.setViewportSize(phone)
+    for (const url of urls) {
+      await signedIn.goto(url)
+      await fitsPhone(signedIn)
+    }
+  }
+})
+
+test('dashboard: phone', async ({ browser }, info) => {
+  const page = await as(browser, info, 'lena')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await expect(page.locator('.card-unit', { hasText: 'online' })).toBeVisible()
+  await chartDrawn(page)
+  await fitsPhone(page)
+  // The plot itself, not just the axis labels, gets most of the chart's height.
+  const plot = await page.evaluate(() => {
+    const chart = (window as any).Chart.getChart('chart')
+    return { area: chart.chartArea.height, total: chart.height }
+  })
+  expect(plot.area).toBeGreaterThan(plot.total / 2)
+  await shoot(page, 'dashboard.mobile', { clipAbove: 'tbody tr:nth-child(6)' })
+})

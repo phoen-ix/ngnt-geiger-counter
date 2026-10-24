@@ -316,3 +316,23 @@ td input:focus {
 
 /* ── Chart ───────────────────────────────────────────────────────────────── */
 canvas { max-height: 280px; }
+
+/* ── Phones ──────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    body { padding: 16px; }
+    header { flex-direction: column; gap: 12px; }
+    .section { padding: 16px; overflow-x: auto; }
+    th, td { padding: 6px 8px; }
+    td input[type="text"] { min-width: 140px; }
+    .card { flex: 1 1 140px; min-width: 0; padding: 14px 16px 12px; }
+    .form-row { flex-direction: column; align-items: stretch; gap: 6px; }
+    .form-row label { width: auto; }
+    .form-row input[type="text"],
+    .form-row input[type="number"],
+    .form-row input[type="password"],
+    .form-row input[type="email"],
+    .form-row select { width: 100%; min-width: 0; }
+    canvas { max-height: 360px; }
+    .auth-form { margin-top: 24px; }
+    .auth-form .section { padding: 20px; }
+}

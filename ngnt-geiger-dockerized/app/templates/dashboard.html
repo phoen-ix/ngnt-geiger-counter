@@ -148,6 +148,8 @@ new Chart(document.getElementById('chart').getContext('2d'), {
     },
     options: {
         responsive: true,
+        // Square on phones, so the slanted time labels leave room for the plot.
+        aspectRatio: matchMedia('(max-width: 640px)').matches ? 1 : 2,
         interaction: { mode: 'index', intersect: false },
         plugins: {
             legend: {

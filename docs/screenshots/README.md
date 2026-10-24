@@ -13,6 +13,13 @@ counters of public users, signed-in users also their own, admins all of them. Th
 
 <img src="dashboard.png" alt="Dashboard: CPM, dose rate and online status of the balcony counter, a 24-hour chart and the latest readings" width="800">
 
+## Dashboard — phone
+
+The same page on a phone (390 px wide): the header and the form fields stack, the cards share a row, and wide tables
+scroll inside their box.
+
+<img src="dashboard.mobile.png" alt="Dashboard on a phone: header and navigation stacked, range buttons, the four cards two per row, the chart and the first readings" width="390">
+
 ## Dashboard — one device, offline
 
 With more than one visible counter, the **Device** dropdown narrows the page to one. This one was unplugged two days

@@ -268,7 +268,7 @@ Jinja2 templates; every page extends `base.html`:
 
 ### `app/static/style.css`
 
-Extracted from inline CSS in the former `index.php`/`admin.php`. Dark theme with consistent variables.
+Extracted from inline CSS in the former `index.php`/`admin.php`. Dark theme; one `@media (max-width: 640px)` block at the end makes every page fit a phone (the docs tour fails if a page scrolls sideways at 390 px).
 
 ### `scripts/pm2/mqtt_bro_impulses.py`
 
