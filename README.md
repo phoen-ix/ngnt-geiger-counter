@@ -251,6 +251,17 @@ install keeps its own value until you change it. The service sets `MARIADB_AUTO_
 the container upgrades `volumes/mariadb` in place on its first start. Take a verified dump first
 (`docker compose exec ngnt-geiger-mariadb mariadb-dump ...`) — a major-version upgrade cannot be rolled back.
 
+### Leftovers in `app/` (installs from before 2026-10-24)
+
+Older versions mounted `app/` read-write at `/app` with `data/` and `config/mosquitto/` nested inside, so Docker left
+root-owned `app/data/`, `app/mosquitto-config/` (empty mount points) and `app/__pycache__/` in the checkout. The app
+is now mounted read-only at `/src`. After pulling, recreate the container and remove them once:
+
+```bash
+docker compose up -d ngnt-geiger-flask
+sudo rm -rf app/data app/mosquitto-config app/__pycache__
+```
+
 ### Reset (wipe all data and start fresh)
 
 The containers write these directories as root and the MariaDB user, hence `sudo`:

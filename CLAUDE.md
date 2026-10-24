@@ -22,8 +22,9 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
   `docker-compose.e2e.yml` with an explicit project name (`ngnt-geiger-counter_docs` / `ngnt-geiger-counter_e2e`) and
   `--env-file .env.example`; never project `ngnt-geiger-dockerized` (what a bare `docker compose` here calls itself).
 - Fleet VM: port block 24800–24809, 127.0.0.1 only. Never touch the live stacks (`phytotron-*`, `vib-*`).
-- The Flask image holds only the dependencies; the app is the mounted `app/` directory. Gunicorn runs with
-  `--preload` so the admin bootstrap happens once.
+- The Flask image holds only the dependencies; the app is `app/`, mounted read-only at `/src`. Keep it outside
+  `/app`, where `data/` and the Mosquitto config dir are mounted: mounts nested in a bind-mounted `app/` leave
+  root-owned dirs in the checkout. Gunicorn runs with `--preload` so the admin bootstrap happens once.
 - Every new form needs the hidden `csrf_token` field (Flask-WTF `CSRFProtect` checks every POST).
 - Tests: `MockCursor` advances on `fetchone()`/`fetchall()`, not on `execute()`; every logged-in request needs
   `queue_before_request(cursor)` (twice with `follow_redirects=True`). Details in HANDOVER.md.

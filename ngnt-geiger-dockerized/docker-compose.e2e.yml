@@ -9,8 +9,8 @@
 #
 # Against docker-compose.yml: container names carry the project name; ports bind
 # 127.0.0.1 only (web E2E_WEB_PORT, MQTT/TLS E2E_MQTT_PORT); MariaDB, Flask's
-# data/ and its Mosquitto config dir are named volumes and the app is mounted
-# read-only at /src, so nothing is written into the checkout; the network drops
+# data/ and its Mosquitto config dir are named volumes (the app stays read-only
+# at /src), so nothing is written into the checkout; the network drops
 # its fixed bridge name (IPV4_NETWORK must still be a free /24); Flask and
 # MariaDB get healthchecks for `up --wait`. Mosquitto and the subscriber still
 # bind-mount the checkout's config/, log/ and volumes/ - start them only from a
@@ -20,7 +20,6 @@ services:
         container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-flask
         ports: !override
             - 127.0.0.1:${E2E_WEB_PORT:-1880}:8000
-        working_dir: /src
         volumes: !override
             - ./app:/src:ro
             - flask-data:/app/data

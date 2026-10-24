@@ -14,8 +14,11 @@ services:
             FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
             SITE_NAME: ${SITE_NAME:-NGNT Geiger Counter}
             MOSQUITTO_CONFIG_DIR: /app/mosquitto-config
+        # The app read-only at /src, outside /app: mounts nested inside a
+        # bind-mounted app/ would leave root-owned dirs in the checkout.
+        working_dir: /src
         volumes:
-            - ./app:/app
+            - ./app:/src:ro
             - ./config/mosquitto:/app/mosquitto-config
             - ./data:/app/data
         depends_on:
