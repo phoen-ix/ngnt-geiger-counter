@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "playwright test",
     "docs": "playwright test -c playwright.docs.config.ts"
   },
   "devDependencies": {

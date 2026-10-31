@@ -7,7 +7,9 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
 - Tests (mocked DB, no Docker): `pip install -r app/requirements-dev.txt && python -m pytest`
 - Docs screenshots (Docker + Node 26): `cd e2e && npm ci && npx playwright install chromium && cd .. && scripts/docs-screenshots.sh`
   (`PORT_BASE=24800 …` on the fleet VM, wrapped in `slot heavy ngnt-geiger-counter -- …`)
-- Fleet: `fleet check ngnt-geiger-counter` (pytest + pip-audit; `--with docs` adds the tour)
+- E2E (Docker + Node 26, whole stack incl. Mosquitto, subscriber, Mailpit): `scripts/e2e.sh [playwright args]`
+  (`PORT_BASE=24800 …` via `slot heavy` on the fleet VM). `e2e/COVERAGE.md` maps features to tests; keep it current.
+- Fleet: `fleet check ngnt-geiger-counter` (pytest + pip-audit; `--e2e` adds the e2e suite, `--with docs` the tour)
 - Firmware: Arduino IDE only, no build in CI.
 
 ## Invariants
@@ -30,5 +32,11 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
   `queue_before_request(cursor)` (twice with `follow_redirects=True`). Details in HANDOVER.md.
 - `dashboard.html` loads Chart.js 4.4.0 from jsDelivr; `e2e/package.json` pins the same version for the tour's
   offline copy. Bump both together.
+- E2E: every test owns its users/devices (`uid()`, SQL in `e2e/tests/support.ts`); every sign-in goes through
+  `signIn()`/`submitForm()`, which wait out the login/register/forgot-password rate limits (one IP for the whole
+  suite). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores the defaults);
+  `limits.spec.ts` runs last.
+- The subscriber takes the device ID from the MQTT topic (the ACL ties it to the device's login), never from the
+  payload's `id`.
 - Screenshot names in `docs/screenshots/` are stable (README and the gallery link them). The tour's readings end at
   the start of the current UTC hour, so regenerating in another hour changes the dashboard timestamps.

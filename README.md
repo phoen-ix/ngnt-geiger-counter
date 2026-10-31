@@ -29,15 +29,16 @@ ngnt-geiger-counter/
     │   ├── conftest.py              # Fixtures (app, client, auth, admin)
     │   ├── testutils.py             # MockCursor, MockDB, queue helpers
     │   └── test_*.py
-    ├── e2e/                         # Playwright docs tour (own Node package)
+    ├── e2e/                         # Playwright docs tour + e2e suite (own Node package)
     ├── pytest.ini
     ├── dbinit.sql                   # DB schema — auto-applied on first start
     ├── config/                      # Static config for Mosquitto & MariaDB
     ├── docker-compose.yml
-    ├── docker-compose.e2e.yml       # Overlay for throwaway stacks (docs tour)
+    ├── docker-compose.e2e.yml       # Overlay for throwaway stacks (docs tour, e2e)
     ├── Dockerfiles/
     ├── scripts/
     │   ├── docs-screenshots.sh      # Regenerates docs/screenshots/
+    │   ├── e2e.sh                   # Runs the e2e suite against a throwaway stack
     │   ├── mosquitto/               # Container entrypoint (passwords + reload watcher)
     │   └── pm2/                     # Python MQTT→DB subscriber
     ├── data/                        # Runtime data (admin initial password)
@@ -296,6 +297,18 @@ python -m pytest -v
 ```
 
 It covers every route and the middleware (session checks, CSRF, rate limiting); `python -m pytest --collect-only -q` lists the tests.
+
+### E2E
+
+The Playwright suite in `ngnt-geiger-dockerized/e2e/tests/` drives the whole stack in a browser: every page as guest, user and admin, and each feature end to end — sign-up, sign-in, password reset through a real mail (Mailpit), devices registered in the UI and then publishing over MQTT/TLS through Mosquitto and the subscriber into the dashboard, the account and admin pages, the rate limits. [`e2e/COVERAGE.md`](ngnt-geiger-dockerized/e2e/COVERAGE.md) maps every feature to its test.
+
+```bash
+cd ngnt-geiger-dockerized/e2e && npm ci && npx playwright install chromium && cd ..
+scripts/e2e.sh                                       # the whole suite
+PORT_BASE=24800 scripts/e2e.sh --grep devices        # another port block, some tests
+```
+
+Like the tour it needs Docker and Node 26, reads `.env.example` and keeps its state in named volumes; it runs as compose project `ngnt-geiger-counter_e2e` on `127.0.0.1:${PORT_BASE:-1880}` (Mailpit on +5, MQTT/TLS on +8) and tears the stack down when it ends. CI runs it on every push.
 
 ---
 

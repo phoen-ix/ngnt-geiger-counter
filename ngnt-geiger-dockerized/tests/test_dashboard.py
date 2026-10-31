@@ -109,6 +109,18 @@ def test_dashboard_empty_state(client, mock_cursor):
 
     resp = client.get('/')
     assert resp.status_code == 200
+    assert b'Waiting for first measurement' in resp.data
+    assert b'device-select' not in resp.data
+
+
+def test_dashboard_single_device_has_no_device_filter(client, mock_cursor):
+    """The device dropdown only appears with more than one visible device."""
+    queue_settings(mock_cursor)
+    _queue_dashboard_responses(mock_cursor, [_make_device()], [_make_measurement()])
+
+    resp = client.get('/')
+    assert resp.status_code == 200
+    assert b'device-select' not in resp.data
 
 
 # ── Range filter ────────────────────────────────────────────────────────────

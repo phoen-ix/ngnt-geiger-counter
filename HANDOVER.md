@@ -28,6 +28,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
 | Password reset | Done | Token-based, email via SMTP |
 | Test suite | Done | pytest, mocked DB, no external deps |
+| E2E suite | Done | Playwright in `ngnt-geiger-dockerized/e2e/tests/` against the whole stack (+ Mailpit), `scripts/e2e.sh`; `e2e/COVERAGE.md` |
 | Docs screenshot tour | Done | Playwright in `ngnt-geiger-dockerized/e2e/docs/`, run by `ngnt-geiger-dockerized/scripts/docs-screenshots.sh` (README "Screenshots") |
 | MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain) |
 | Data export (CSV/JSON) | Not started | |
@@ -276,6 +277,7 @@ Changed from v2.0:
 - `upsert_device()` renamed to `update_device_status()` — uses plain `UPDATE ... WHERE device_id = %s` instead of `INSERT ... ON DUPLICATE KEY UPDATE`
 - Returns `bool` indicating if the device exists (rowcount > 0)
 - Measurement branch checks the return value — unregistered devices are skipped with a warning log
+- The device ID comes from the topic (`/<device_id>/impulses`), which the ACL limits to the device's own login; a payload whose `id` names another device is skipped (it would let any registered counter write readings and status for anyone's device)
 
 ### `scripts/mosquitto/docker-entrypoint.sh`
 

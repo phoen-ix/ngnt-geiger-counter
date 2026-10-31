@@ -1,20 +1,20 @@
 # Throwaway-stack overlay for the docs tour (scripts/docs-screenshots.sh) and
-# later e2e runs. Always with an explicit project name, ngnt-geiger-counter_docs
-# or ngnt-geiger-counter_e2e, and `--env-file .env.example` so a local .env never
-# leaks in:
+# the e2e suite (scripts/e2e.sh). Always with an explicit project name,
+# ngnt-geiger-counter_docs or ngnt-geiger-counter_e2e, and `--env-file .env.example`
+# so a local .env never leaks in:
 #
 #   COMPOSE_PROJECT_NAME=ngnt-geiger-counter_e2e docker compose --env-file .env.example \
-#     -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait \
-#     ngnt-geiger-flask ngnt-geiger-mariadb
+#     -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
 #
 # Against docker-compose.yml: container names carry the project name; ports bind
-# 127.0.0.1 only (web E2E_WEB_PORT, MQTT/TLS E2E_MQTT_PORT); MariaDB, Flask's
-# data/ and its Mosquitto config dir are named volumes (the app stays read-only
-# at /src), so nothing is written into the checkout; the network drops
-# its fixed bridge name (IPV4_NETWORK must still be a free /24); Flask and
-# MariaDB get healthchecks for `up --wait`. Mosquitto and the subscriber still
-# bind-mount the checkout's config/, log/ and volumes/ - start them only from a
-# clean clone. Tear down with `down -v --remove-orphans --rmi local`.
+# 127.0.0.1 only (web E2E_WEB_PORT, MQTT/TLS E2E_MQTT_PORT, Mailpit E2E_MAIL_PORT);
+# all state lives in named volumes (the app, the entrypoint and Mosquitto's
+# config files stay read-only bind mounts), so nothing is written into the
+# checkout; Flask and Mosquitto share the config volume (devices.conf + .reload);
+# the network drops its fixed bridge name (IPV4_NETWORK must still be a free
+# /24); Flask, MariaDB and Mosquitto get healthchecks for `up --wait`. Mailpit
+# (e2e only) catches the password-reset mail. Tear down with
+# `down -v --remove-orphans --rmi local`.
 services:
     ngnt-geiger-flask:
         container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-flask
@@ -51,10 +51,41 @@ services:
         container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-mosquitto
         ports: !override
             - 127.0.0.1:${E2E_MQTT_PORT:-1888}:8883
+        volumes: !override
+            - mosquitto-config:/mosquitto/config
+            - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+            - ./config/mosquitto/acls:/mosquitto/config/acls:ro
+            - ./config/mosquitto/conf.d:/mosquitto/config/conf.d:ro
+            - mosquitto-log:/mosquitto/log
+            - mosquitto-data:/mosquitto/data
+            - mosquitto-certs:/mosquitto/certs
+            - ./scripts/mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+        healthcheck:
+            # The TLS listener is up and the subscriber's account works.
+            test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 8883 --cafile /mosquitto/certs/ca.crt --insecure -u \"$$MQTT_PYTHON_USER\" -P \"$$MQTT_PYTHON_USERPW\" -t /healthcheck -n"]
+            interval: 2s
+            timeout: 5s
+            retries: 30
         restart: "no"
 
     ngnt-geiger-subscriber:
         container_name: ${COMPOSE_PROJECT_NAME}-ngnt-geiger-subscriber
+        depends_on: !override
+            ngnt-geiger-mariadb:
+                condition: service_healthy
+            ngnt-geiger-mosquitto:
+                condition: service_healthy
+        restart: "no"
+
+    mailpit:
+        image: axllent/mailpit:v1.32.0
+        container_name: ${COMPOSE_PROJECT_NAME}-mailpit
+        ports:
+            - 127.0.0.1:${E2E_MAIL_PORT:-1885}:8025
+        networks:
+            ngnt-geiger-network:
+                aliases:
+                    - mailpit
         restart: "no"
 
 networks:
@@ -68,3 +99,6 @@ volumes:
     mariadb:
     flask-data:
     mosquitto-config:
+    mosquitto-log:
+    mosquitto-data:
+    mosquitto-certs:
