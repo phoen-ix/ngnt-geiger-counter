@@ -6,6 +6,7 @@ import os
 
 import aiomqtt
 import aiomysql
+from pymysql.constants import CLIENT
 
 # ── Config ────────────────────────────────────────────────────────────────────
 _net           = os.getenv('IPV4_NETWORK')
@@ -175,6 +176,10 @@ async def create_pool() -> aiomysql.Pool:
                 autocommit=True,
                 minsize=2,
                 maxsize=10,
+                # rowcount = matched rows, not changed ones: an UPDATE that sets
+                # the same status and last_seen (two messages in one second)
+                # still finds the device.
+                client_flag=CLIENT.FOUND_ROWS,
             )
             print(f"[db] pool ready — {DB_HOST}:{DB_PORT}/{DB_NAME} (min=2, max=10)")
             return pool
