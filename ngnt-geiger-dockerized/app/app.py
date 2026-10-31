@@ -369,21 +369,17 @@ def dashboard():
 
             # Chart data
             cur.execute(
-                f"SELECT measured_at, cpm, usvh FROM measurements "
+                f"SELECT device_id, measured_at, cpm, usvh FROM measurements "
                 f"WHERE device_id IN ({ph}) AND measured_at >= NOW() - INTERVAL {sql_interval} "
                 f"ORDER BY measured_at ASC",
                 filter_ids,
             )
             chart_data = cur.fetchall()
 
-            # Recent measurements
-            cur.execute(
-                f"SELECT device_id, measured_at, cpm, usvh FROM measurements "
-                f"WHERE device_id IN ({ph}) AND measured_at >= NOW() - INTERVAL {sql_interval} "
-                f"ORDER BY measured_at DESC LIMIT 100",
-                filter_ids,
-            )
-            recent = cur.fetchall()
+    # The table: the newest 100 of the chart's rows. Not a query of its own:
+    # MariaDB 12.3 answers `device_id = x ORDER BY measured_at DESC LIMIT n`
+    # on the partitioned table with a single row.
+    recent = chart_data[:-101:-1]
 
     db.close()
 
@@ -392,9 +388,6 @@ def dashboard():
         localize_measured_at(latest, display_tz)
 
     for row in chart_data:
-        localize_measured_at(row, display_tz)
-
-    for row in recent:
         localize_measured_at(row, display_tz)
 
     chart_labels = [r['measured_at_local'] for r in chart_data]
