@@ -279,8 +279,8 @@ docker compose up -d
 |-----------|-------------------|---------|------|
 | `ngnt-geiger-mariadb` | `mariadb:12.3.3` | 3306 (internal) | Persistent storage |
 | `ngnt-geiger-mosquitto` | `DockerfileMosquitto` (eclipse-mosquitto + openssl) | 8883 (TLS), 2883 -> 1883 (plain) | MQTT broker with TLS + auto-reload |
-| `ngnt-geiger-subscriber` | `DockerfileSubscriber` (`python:3.15.1-slim-trixie`) | — | Async MQTT subscriber -> DB |
-| `ngnt-geiger-flask` | `DockerfileFlask` (`python:3.15.1-slim-trixie`) | 1880 -> 8000 | Flask web dashboard + user management |
+| `ngnt-geiger-subscriber` | `DockerfileSubscriber` (`python:3.15.2-slim-trixie`) | — | Async MQTT subscriber -> DB |
+| `ngnt-geiger-flask` | `DockerfileFlask` (`python:3.15.2-slim-trixie`) | 1880 -> 8000 | Flask web dashboard + user management |
 
 All containers share the internal bridge network `10.188.1.0/24` (`IPV4_NETWORK` in `.env`). It must not overlap any other Docker network on the host; the subscriber reaches MariaDB (`.20`) and Mosquitto (`.30`) by these fixed addresses.
 

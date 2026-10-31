@@ -292,7 +292,7 @@ Enhanced from v2.0:
 
 ### `Dockerfiles/DockerfileFlask`
 
-`python:3.15.1-slim-trixie` + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, DBUtils, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker. The image holds no app code: compose mounts `app/` read-only at `/src` (the working directory) and `data/` and `config/mosquitto/` at `/app/data` and `/app/mosquitto-config`.
+`python:3.15.2-slim-trixie` + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, DBUtils, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker. The image holds no app code: compose mounts `app/` read-only at `/src` (the working directory) and `data/` and `config/mosquitto/` at `/app/data` and `/app/mosquitto-config`.
 
 ### `Dockerfiles/DockerfileMosquitto`
 
@@ -353,8 +353,8 @@ The tests run on the host without Docker or external dependencies. All DB access
 |-------|---------|
 | `mariadb` | 12.3.3 |
 | `eclipse-mosquitto` | 2.1.2-alpine |
-| `python` (Flask) | 3.15.1-slim-trixie |
-| `python` (subscriber) | 3.15.1-slim-trixie |
+| `python` (Flask) | 3.15.2-slim-trixie |
+| `python` (subscriber) | 3.15.2-slim-trixie |
 
 ---
 
