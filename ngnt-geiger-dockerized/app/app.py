@@ -4,6 +4,7 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import (Flask, flash, redirect, render_template, request, session,
                    url_for)
@@ -112,7 +113,6 @@ bootstrap_admin_with_retry()
 # ── Timezone helper ──────────────────────────────────────────────────────────
 
 def utc_to_local(utc: datetime | str, tz_name: str) -> str:
-    from zoneinfo import ZoneInfo
     if isinstance(utc, str):
         utc = datetime.strptime(utc, '%Y-%m-%d %H:%M:%S')
     dt = utc.replace(tzinfo=timezone.utc)
@@ -586,6 +586,40 @@ SETTINGS_KEYS = [
 SMTP_KEYS = [
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_tls',
 ]
+# The admin form's labels, for its error messages.
+SETTING_LABELS = {
+    'base_url': 'Base URL', 'display_timezone': 'Display Timezone',
+    'offline_timeout_minutes': 'Offline Timeout (minutes)', 'default_cpm_factor': 'Default CPM Factor',
+    'default_alert_threshold': 'Default Alert Threshold (\u03bcSv/h)', 'registration_enabled': 'Registration',
+    'session_timeout_minutes': 'Session Timeout (minutes)', 'smtp_host': 'SMTP Host', 'smtp_port': 'SMTP Port',
+    'smtp_user': 'SMTP User', 'smtp_password': 'SMTP Password', 'smtp_from': 'From Address',
+    'smtp_tls': 'Use STARTTLS',
+}
+
+
+def setting_error(key: str, val: str) -> str | None:
+    """Why `val` can't be stored for `key`: the dashboard, every signed-in
+    request and the reset mail parse these, so a bad value would break them."""
+    label = SETTING_LABELS[key]
+    if len(val) > 255:
+        return f'{label} can be at most 255 characters.'
+    if key in ('offline_timeout_minutes', 'session_timeout_minutes') and not (re.fullmatch('[0-9]+', val) and int(val) >= 1):
+        return f'{label} must be a whole number of at least 1.'
+    if key == 'smtp_port' and not (re.fullmatch('[0-9]+', val) and 1 <= int(val) <= 65535):
+        return f'{label} must be a port number (1-65535).'
+    if key == 'default_alert_threshold':
+        try:
+            if float(val) >= 0:
+                return None
+        except ValueError:
+            pass
+        return f'{label} must be a number of at least 0.'
+    if key == 'display_timezone':
+        try:
+            ZoneInfo(val)
+        except (ZoneInfoNotFoundError, ValueError):
+            return f'{label} must be a timezone name such as Europe/Vienna.'
+    return None
 
 
 @app.route('/admin', methods=['GET', 'POST'])
@@ -596,25 +630,19 @@ def admin():
     if request.method == 'POST':
         action = request.form.get('action')
 
-        if action == 'save_settings':
-            with db.cursor() as cur:
-                stmt = ("INSERT INTO settings (`key`, `value`) VALUES (%s, %s) "
-                        "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
-                for key in SETTINGS_KEYS:
-                    val = request.form.get(key)
-                    if val is not None:
-                        cur.execute(stmt, (key, val.strip()))
-            flash('Settings saved.', 'success')
-
-        elif action == 'save_smtp':
-            with db.cursor() as cur:
-                stmt = ("INSERT INTO settings (`key`, `value`) VALUES (%s, %s) "
-                        "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
-                for key in SMTP_KEYS:
-                    val = request.form.get(key)
-                    if val is not None:
-                        cur.execute(stmt, (key, val.strip()))
-            flash('SMTP settings saved.', 'success')
+        if action in ('save_settings', 'save_smtp'):
+            keys = SETTINGS_KEYS if action == 'save_settings' else SMTP_KEYS
+            values = {k: request.form[k].strip() for k in keys if k in request.form}
+            errors = [e for k, v in values.items() if (e := setting_error(k, v))]
+            if errors:
+                flash(errors[0], 'error')
+            else:
+                with db.cursor() as cur:
+                    stmt = ("INSERT INTO settings (`key`, `value`) VALUES (%s, %s) "
+                            "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+                    for key, val in values.items():
+                        cur.execute(stmt, (key, val))
+                flash('Settings saved.' if action == 'save_settings' else 'SMTP settings saved.', 'success')
 
         elif action in ('toggle_role', 'toggle_public', 'delete_user'):
             try:
