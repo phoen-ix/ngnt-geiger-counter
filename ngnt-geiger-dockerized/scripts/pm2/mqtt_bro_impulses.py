@@ -118,7 +118,13 @@ async def mqtt_listener(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
                     if not isinstance(msg, dict):
                         continue
 
-                    device_id = msg.get('id', 'unknown')
+                    # The topic is the one the broker's ACL checked against the
+                    # device's own login (/<device_id>/impulses); the payload's
+                    # id is whatever the sender wrote.
+                    device_id = message.topic.value.split('/')[1]
+                    if msg.get('id', device_id) != device_id:
+                        print(f"[mqtt] id {msg.get('id')!r} on {message.topic.value}, skipping")
+                        continue
 
                     # Branch 1: measurement (has cpm key)
                     if 'cpm' in msg:
