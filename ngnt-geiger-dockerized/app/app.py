@@ -195,6 +195,8 @@ def register():
             flash('Password must be at least 6 characters.', 'error')
         elif password != password2:
             flash('Passwords do not match.', 'error')
+        elif email and len(email) > 255:
+            flash('Email can be at most 255 characters.', 'error')
         else:
             db = get_db()
             with db.cursor() as cur:
@@ -443,6 +445,8 @@ def devices():
 
             if not re.match(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$', mac):
                 flash('Invalid MAC address format. Use AA:BB:CC:DD:EE:FF.', 'error')
+            elif display_name and len(display_name) > 100:
+                flash('Display name can be at most 100 characters.', 'error')
             elif not user_pepper:
                 flash('Set a pepper in your account settings first.', 'error')
             else:
@@ -463,12 +467,15 @@ def devices():
         elif action == 'update_device':
             device_db_id = request.form.get('device_db_id')
             display_name = request.form.get('display_name', '').strip() or None
-            with db.cursor() as cur:
-                cur.execute(
-                    "UPDATE devices SET display_name = %s WHERE id = %s AND user_id = %s",
-                    (display_name, device_db_id, user_id),
-                )
-            flash('Device updated.', 'success')
+            if display_name and len(display_name) > 100:
+                flash('Display name can be at most 100 characters.', 'error')
+            else:
+                with db.cursor() as cur:
+                    cur.execute(
+                        "UPDATE devices SET display_name = %s WHERE id = %s AND user_id = %s",
+                        (display_name, device_db_id, user_id),
+                    )
+                flash('Device updated.', 'success')
 
         elif action == 'delete_device':
             device_db_id = request.form.get('device_db_id')
@@ -514,12 +521,18 @@ def account():
             email = request.form.get('email', '').strip() or None
             pepper = request.form.get('pepper', '').strip() or None
             public = request.form.get('public', '0') == '1'
-            with db.cursor() as cur:
-                cur.execute(
-                    "UPDATE users SET email = %s, pepper = %s, `public` = %s WHERE id = %s",
-                    (email, pepper, public, user_id),
-                )
-            flash('Profile updated.', 'success')
+            if email and len(email) > 255:
+                flash('Email can be at most 255 characters.', 'error')
+            elif pepper and not re.fullmatch(r'[ -~]{1,64}', pepper):
+                # derive_mqtt_credentials() and the firmware use it as ASCII bytes.
+                flash('The pepper can be at most 64 characters, ASCII letters, digits and symbols only.', 'error')
+            else:
+                with db.cursor() as cur:
+                    cur.execute(
+                        "UPDATE users SET email = %s, pepper = %s, `public` = %s WHERE id = %s",
+                        (email, pepper, public, user_id),
+                    )
+                flash('Profile updated.', 'success')
 
         elif action == 'change_password':
             current = request.form.get('current_password', '')

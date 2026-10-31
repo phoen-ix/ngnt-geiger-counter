@@ -15,11 +15,11 @@
         </div>
         <div class="form-row">
             <label for="email">Email</label>
-            <input type="email" id="email" name="email" value="{{ user['email'] or '' }}">
+            <input type="email" id="email" name="email" maxlength="255" value="{{ user['email'] or '' }}">
         </div>
         <div class="form-row">
             <label for="pepper">MQTT Pepper</label>
-            <input type="text" id="pepper" name="pepper" value="{{ user['pepper'] or '' }}"
+            <input type="text" id="pepper" name="pepper" maxlength="64" value="{{ user['pepper'] or '' }}"
                    placeholder="Shared secret for device provisioning">
         </div>
         <div class="form-row">

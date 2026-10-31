@@ -14,7 +14,7 @@
             </div>
             <div class="form-row">
                 <label for="email">Email (optional)</label>
-                <input type="email" id="email" name="email"
+                <input type="email" id="email" name="email" maxlength="255"
                        value="{{ request.form.get('email', '') }}">
             </div>
             <div class="form-row">
