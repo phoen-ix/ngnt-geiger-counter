@@ -148,8 +148,8 @@
                 <td style="font-size:0.78rem;color:#6e7681;">{{ u['created_at'] }}</td>
                 <td>
                     {% if u['id'] != session['user_id'] %}
-                    <form method="post" style="display:inline;"
-                          onsubmit="return confirm('Delete user ' + {{ u['username']|tojson }} + '? All their devices will be unprovisioned.');">
+                    <form method="post" style="display:inline;" data-username="{{ u['username'] }}"
+                          onsubmit="return confirm('Delete user ' + this.dataset.username + '? All their devices will be unprovisioned.');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="delete_user">
                         <input type="hidden" name="target_user_id" value="{{ u['id'] }}">
