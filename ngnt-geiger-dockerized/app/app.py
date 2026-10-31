@@ -541,6 +541,8 @@ def account():
                 with db.cursor() as cur:
                     cur.execute("UPDATE users SET password_hash = %s, pw_version = pw_version + 1 WHERE id = %s",
                                 (pw_hash, user_id))
+                # Signs out the account's other sessions, not this one.
+                session['pw_version'] = session.get('pw_version', 0) + 1
                 # Remove initial password file if admin changes password
                 try:
                     os.remove('/app/data/admin_initial_password.txt')
