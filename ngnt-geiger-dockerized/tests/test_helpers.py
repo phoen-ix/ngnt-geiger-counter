@@ -1,6 +1,9 @@
 """Unit tests for helpers.py — credential derivation, provisioning, email, decorators."""
 
+import base64
+import hashlib
 import os
+import re
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -51,13 +54,22 @@ def test_derive_mqtt_credentials_different_pepper_different_password():
 
 # ── provision_device / unprovision_device ───────────────────────────────────
 
-def test_provision_device_creates_entry(tmp_path):
+def _hash_matches(line, device_id, password):
+    """A devices.conf line in Mosquitto's $7$ (PBKDF2-SHA512) password-file format."""
+    user, _, rounds, salt, digest = line.strip().split('$')
+    expected = hashlib.pbkdf2_hmac('sha512', password.encode(), base64.b64decode(salt), int(rounds))
+    return user == f'{device_id}:' and base64.b64decode(digest) == expected
+
+
+def test_provision_device_stores_only_a_hash(tmp_path):
     from helpers import provision_device
     conf = tmp_path / 'devices.conf'
     conf.touch()
     with patch('helpers.MOSQUITTO_CONFIG_DIR', str(tmp_path)):
         provision_device('geiger_aabbcc', 'secret123')
-    assert 'geiger_aabbcc secret123\n' in conf.read_text()
+    text = conf.read_text()
+    assert 'secret123' not in text
+    assert _hash_matches(text, 'geiger_aabbcc', 'secret123')
 
 
 def test_provision_device_creates_reload_flag(tmp_path):
@@ -87,9 +99,42 @@ def test_provision_device_multiple_devices(tmp_path):
     with patch('helpers.MOSQUITTO_CONFIG_DIR', str(tmp_path)):
         provision_device('geiger_aabbcc', 'pw1')
         provision_device('geiger_ddeeff', 'pw2')
-    text = conf.read_text()
-    assert 'geiger_aabbcc pw1' in text
-    assert 'geiger_ddeeff pw2' in text
+    first, second = conf.read_text().splitlines()
+    assert _hash_matches(first, 'geiger_aabbcc', 'pw1')
+    assert _hash_matches(second, 'geiger_ddeeff', 'pw2')
+
+
+def test_legacy_plaintext_lines_are_hashed(tmp_path):
+    from helpers import hash_legacy_device_passwords, provision_device
+    conf = tmp_path / 'devices.conf'
+    conf.write_text('geiger_aabbcc pw1\n')
+    with patch('helpers.MOSQUITTO_CONFIG_DIR', str(tmp_path)):
+        provision_device('geiger_ddeeff', 'pw2')
+        provision_device('geiger_aabbcc', 'pw1')   # already there in the old format
+        hashed_new = conf.read_text().splitlines()[1]
+        hash_legacy_device_passwords()
+    first, second = conf.read_text().splitlines()
+    assert _hash_matches(first, 'geiger_aabbcc', 'pw1')
+    assert second == hashed_new
+
+
+def test_hash_legacy_device_passwords_without_a_file(tmp_path):
+    from helpers import hash_legacy_device_passwords
+    with patch('helpers.MOSQUITTO_CONFIG_DIR', str(tmp_path)):
+        hash_legacy_device_passwords()
+    assert not (tmp_path / 'devices.conf').exists()
+
+
+def test_unprovision_device_removes_hashed_entry(tmp_path):
+    from helpers import provision_device, unprovision_device
+    conf = tmp_path / 'devices.conf'
+    conf.touch()
+    with patch('helpers.MOSQUITTO_CONFIG_DIR', str(tmp_path)):
+        provision_device('geiger_aabbcc', 'pw1')
+        provision_device('geiger_ddeeff', 'pw2')
+        unprovision_device('geiger_aabbcc')
+    [line] = conf.read_text().splitlines()
+    assert _hash_matches(line, 'geiger_ddeeff', 'pw2')
 
 
 def test_unprovision_device_removes_entry(tmp_path):

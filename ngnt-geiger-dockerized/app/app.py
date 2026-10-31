@@ -14,8 +14,9 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from helpers import (admin_required, derive_mqtt_credentials, get_db,
-                     get_settings, login_required, provision_device,
-                     send_password_reset_email, unprovision_device)
+                     get_settings, hash_legacy_device_passwords, login_required,
+                     provision_device, send_password_reset_email,
+                     unprovision_device)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ def bootstrap_admin_with_retry():
 
 
 bootstrap_admin_with_retry()
+hash_legacy_device_passwords()
 
 
 # ── Timezone helper ──────────────────────────────────────────────────────────

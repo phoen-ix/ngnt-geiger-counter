@@ -1,3 +1,4 @@
+import base64
 import fcntl
 import hashlib
 import hmac
@@ -86,6 +87,22 @@ def derive_mqtt_credentials(mac_address: str, pepper: str) -> tuple[str, str]:
 # ── Mosquitto provisioning ───────────────────────────────────────────────────
 
 MOSQUITTO_CONFIG_DIR = os.environ.get('MOSQUITTO_CONFIG_DIR', '/app/mosquitto-config')
+# devices.conf holds "<device id>:<hash>" lines in Mosquitto's password-file format, which
+# the Mosquitto entrypoint copies into passwd.txt. $7$ is PBKDF2-SHA512 with a 12-byte salt
+# (mosquitto_passwd -H sha512-pbkdf2); the broker checks it on every CONNECT.
+MOSQUITTO_PBKDF2_ROUNDS = 10_000
+
+
+def mosquitto_password_hash(password: str) -> str:
+    salt = os.urandom(12)
+    digest = hashlib.pbkdf2_hmac('sha512', password.encode(), salt, MOSQUITTO_PBKDF2_ROUNDS)
+    return (f'$7${MOSQUITTO_PBKDF2_ROUNDS}${base64.b64encode(salt).decode()}'
+            f'${base64.b64encode(digest).decode()}')
+
+
+def _device_of(line: str) -> str:
+    """Device id of a devices.conf line ("id:hash", or the older plaintext "id password")."""
+    return line.strip().split(':', 1)[0].split(' ', 1)[0]
 
 
 def provision_device(device_id: str, mqtt_password: str) -> None:
@@ -97,11 +114,10 @@ def provision_device(device_id: str, mqtt_password: str) -> None:
         f.seek(0)
         lines = f.readlines()
         for line in lines:
-            parts = line.strip().split()
-            if parts and parts[0] == device_id:
+            if _device_of(line) == device_id:
                 fcntl.flock(f, fcntl.LOCK_UN)
                 return  # already provisioned
-        f.write(f'{device_id} {mqtt_password}\n')
+        f.write(f'{device_id}:{mosquitto_password_hash(mqtt_password)}\n')
         fcntl.flock(f, fcntl.LOCK_UN)
 
     # Signal Mosquitto to reload
@@ -119,14 +135,32 @@ def unprovision_device(device_id: str) -> None:
         f.seek(0)
         f.truncate()
         for line in lines:
-            parts = line.strip().split()
-            if parts and parts[0] == device_id:
+            if _device_of(line) == device_id:
                 continue
             f.write(line)
         fcntl.flock(f, fcntl.LOCK_UN)
 
     with open(reload_flag, 'w') as f:
         f.write('1')
+
+
+def hash_legacy_device_passwords() -> None:
+    """Rewrite the plaintext "id password" lines of older versions as "id:hash"."""
+    devices_conf = os.path.join(MOSQUITTO_CONFIG_DIR, 'devices.conf')
+    try:
+        f = open(devices_conf, 'r+')
+    except FileNotFoundError:
+        return
+    with f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        lines = f.readlines()
+        hashed = [f'{parts[0]}:{mosquitto_password_hash(parts[1])}\n'
+                  if len(parts := line.split()) == 2 else line for line in lines]
+        if hashed != lines:
+            f.seek(0)
+            f.truncate()
+            f.writelines(hashed)
+        fcntl.flock(f, fcntl.LOCK_UN)
 
 
 # ── Email ────────────────────────────────────────────────────────────────────

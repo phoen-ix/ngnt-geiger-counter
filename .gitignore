@@ -2,7 +2,7 @@
 # Copy .env.example → .env and fill in your values; never commit .env
 ngnt-geiger-dockerized/.env
 
-# ── Auto-provisioned device credentials (plaintext, managed by Flask)
+# ── Auto-provisioned device credentials (hashed, managed by Flask)
 # The empty seed file is force-added; populated versions are gitignored.
 ngnt-geiger-dockerized/config/mosquitto/devices.conf
 ngnt-geiger-dockerized/config/mosquitto/passwd.txt

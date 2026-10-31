@@ -15,11 +15,17 @@ rebuild_passwd() {
 
     mosquitto_passwd -b "$PASSWD_FILE" "$MQTT_PYTHON_USER" "$MQTT_PYTHON_USERPW"
 
-    # Re-provision auto-provisioned devices (if any)
+    # Re-provision auto-provisioned devices (if any). Flask writes "id:hash" lines in
+    # password-file format; plaintext "id password" lines predate that (Flask rewrites
+    # them on start).
     if [ -f "$DEVICES_CONF" ]; then
         while read -r dev_user dev_pass; do
             [ -z "$dev_user" ] && continue
-            mosquitto_passwd -b "$PASSWD_FILE" "$dev_user" "$dev_pass"
+            if [ -z "$dev_pass" ]; then
+                printf '%s\n' "$dev_user" >> "$PASSWD_FILE"
+            else
+                mosquitto_passwd -b "$PASSWD_FILE" "$dev_user" "$dev_pass"
+            fi
         done < "$DEVICES_CONF"
     fi
 }

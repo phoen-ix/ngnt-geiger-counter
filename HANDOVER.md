@@ -70,7 +70,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 └─────────────────────────────────────────────────────────┘
 ```
 
-Flask writes `devices.conf` and a `.reload` flag when provisioning devices. Both Flask and Mosquitto mount the same host directory (`./config/mosquitto`), so the flag is visible to both containers. Mosquitto's entrypoint polls for the flag every 5 seconds and regenerates `passwd.txt` + sends SIGHUP.
+Flask writes `devices.conf` (one `device_id:$7$…` line per device: Mosquitto's PBKDF2-SHA512 password-file hash, never the password) and a `.reload` flag when provisioning devices. Both Flask and Mosquitto mount the same host directory (`./config/mosquitto`), so the flag is visible to both containers. Mosquitto's entrypoint polls for the flag every 5 seconds and regenerates `passwd.txt` (copies those lines in) + sends SIGHUP. On start Flask rewrites plaintext `device_id password` lines of older versions as hashes.
 
 ---
 
@@ -218,7 +218,7 @@ Single-file Flask app with all routes. Key components:
 
 **Input validation:** Usernames restricted to `[a-zA-Z0-9_-]` (3-50 chars). User-controlled strings in JS contexts use `|tojson` filter to prevent XSS. Invalid `display_timezone` values fall back to UTC instead of crashing.
 
-**Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random 20-char password, prints to stdout, and saves to `/app/data/admin_initial_password.txt` (mode 0600). The file is deleted when the admin changes their password.
+**Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random password and saves it to `/app/data/admin_initial_password.txt` (mode 0600); the log only says where it is. The file is deleted when the admin changes their password.
 
 **Routes:**
 
@@ -245,7 +245,7 @@ Single-file Flask app with all routes. Key components:
 3. Derive MQTT credentials from MAC + pepper
 4. Check for duplicate device_id
 5. INSERT into devices table
-6. Write to `devices.conf` + create `.reload` flag
+6. Write `device_id:hash` to `devices.conf` + create `.reload` flag
 7. Mosquitto reload watcher picks it up within 5 seconds
 
 ### `app/helpers.py`
@@ -254,7 +254,7 @@ Single-file Flask app with all routes. Key components:
 - `get_settings()`: loads all settings from DB
 - `login_required`, `admin_required`: decorators checking `session['user_id']` / `session['role']`
 - `derive_mqtt_credentials(mac, pepper)`: HMAC-SHA256 credential derivation matching firmware
-- `provision_device()` / `unprovision_device()`: manage `devices.conf` with file locking (`fcntl.flock`) and `.reload` flag
+- `provision_device()` / `unprovision_device()`: manage `devices.conf` (Mosquitto `$7$` hashes from `mosquitto_password_hash()`) with file locking (`fcntl.flock`) and `.reload` flag; `hash_legacy_device_passwords()` hashes plaintext lines of older versions on start
 - `send_password_reset_email()`: SMTP using settings from DB; `base_url` from DB settings, `site_name` from `SITE_NAME` env var
 
 ### `app/templates/`
@@ -338,9 +338,9 @@ The tests run on the host without Docker or external dependencies. All DB access
 | Server-side credentials | `.env` (gitignored) | Template in `.env.example` |
 | Flask secret key | `.env` (`FLASK_SECRET_KEY`) | Used for session signing |
 | Site name | `.env` (`SITE_NAME`) | Page titles, nav bar, email subjects |
-| Initial admin password | stdout + `data/admin_initial_password.txt` | Deleted on password change |
+| Initial admin password | `data/admin_initial_password.txt` | Deleted on password change |
 | MQTT pepper | Per-user in DB (`users.pepper`) + device portal | Same value on both sides |
-| Device MQTT passwords | `config/mosquitto/devices.conf` (gitignored) + DB | Managed by Flask provisioning |
+| Device MQTT passwords | hashed in `config/mosquitto/devices.conf` (gitignored); plaintext in DB `devices.mqtt_password` | Managed by Flask provisioning |
 | SMTP password | DB `settings` table | Configured in admin UI |
 
 **Never commit `.env`.** It is in `.gitignore`.
@@ -364,7 +364,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 
 2. **Synchronous DB in Flask** — PyMySQL is synchronous; each request blocks a Gunicorn worker during DB queries. With 2 workers this is fine for small deployments. For higher load, increase workers or switch to an async framework.
 
-3. **Pepper stored in plaintext** — The user's pepper is stored as plaintext in the DB because it needs to be used for credential derivation. The MQTT password (derived from pepper + MAC) is also stored in plaintext in `devices.conf`. This is acceptable because Mosquitto needs the plaintext to generate its own password file.
+3. **Pepper stored in plaintext** — The user's pepper is stored as plaintext in the DB because it needs to be used for credential derivation. The MQTT password derived from it is stored in plaintext in `devices.mqtt_password` (never read by the app); `devices.conf` holds only its hash.
 
 4. **In-memory rate limiting** — Flask-Limiter uses in-memory storage, so limits are per Gunicorn worker and reset on restart. For stricter enforcement, configure a shared backend (Redis/Memcached) or use a reverse proxy.
 

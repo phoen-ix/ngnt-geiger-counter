@@ -37,6 +37,8 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
   `signIn()`/`submitForm()`, which wait out the login/register/forgot-password rate limits (one IP for the whole
   suite). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores the defaults);
   `limits.spec.ts` runs last.
+- `devices.conf` holds `device_id:$7$…` hashes (Mosquitto password-file format), never a password; the Mosquitto
+  entrypoint copies them into `passwd.txt`. The initial admin password goes only to `data/admin_initial_password.txt`.
 - The subscriber takes the device ID from the MQTT topic (the ACL ties it to the device's login), never from the
   payload's `id`.
 - Screenshot names in `docs/screenshots/` are stable (README and the gallery link them). The tour's readings end at
