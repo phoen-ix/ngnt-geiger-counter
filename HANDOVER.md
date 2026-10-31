@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-10-23 (v3.4 — security audit hardening, MariaDB 12.3 LTS, Python 3.15; docs screenshot tour)
+Last updated: 2026-10-31 (v3.5 — hashed device passwords in devices.conf, device ID from the MQTT topic, settings validation, phone layout, e2e suite)
 
 ---
 

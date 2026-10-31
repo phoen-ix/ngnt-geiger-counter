@@ -4,7 +4,7 @@ A DIY radiation monitor built around a RadiationD v1.1 Cajoe sensor, a Wemos D1 
 
 <img src="docs/screenshots/dashboard.png" alt="Web dashboard: CPM, dose rate and online status of the balcony counter, a 24-hour chart and the latest readings" width="800">
 
-**Status: v3.4.** The hardware design, firmware v2.2 (MQTT over TLS, auto-generated pepper, info screen on MQTT failure) and the dockerized backend (dashboard, per-user visibility, device provisioning, admin panel with SMTP password reset, CSRF protection, rate limiting) are done; MariaDB 12.3 LTS, Python 3.15, CI runs pytest, pip-audit and the screenshot tour. Open ideas are at the end.
+**Status: v3.5.** The hardware design, firmware v2.2 (MQTT over TLS, auto-generated pepper, info screen on MQTT failure) and the dockerized backend (dashboard, per-user visibility, device provisioning, admin panel with SMTP password reset, CSRF protection, rate limiting) are done; MariaDB 12.3 LTS, Python 3.15, CI runs pytest, pip-audit, the end-to-end suite and the screenshot tour. Open ideas are at the end.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -251,7 +251,7 @@ install keeps its own value until you change it. The service sets `MARIADB_AUTO_
 the container upgrades `volumes/mariadb` in place on its first start. Take a verified dump first
 (`docker compose exec ngnt-geiger-mariadb mariadb-dump ...`) — a major-version upgrade cannot be rolled back.
 
-### Leftovers in `app/` (installs from before 2026-10-24)
+### Leftovers in `app/` (upgrading from v3.4 or earlier)
 
 Older versions mounted `app/` read-write at `/app` with `data/` and `config/mosquitto/` nested inside, so Docker left
 root-owned `app/data/`, `app/mosquitto-config/` (empty mount points) and `app/__pycache__/` in the checkout. The app
