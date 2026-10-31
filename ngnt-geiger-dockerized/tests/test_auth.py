@@ -197,7 +197,7 @@ def test_register_empty_fields(client, mock_cursor):
         'password2': '',
     })
     assert resp.status_code == 200
-    assert b'required' in resp.data
+    assert b'Username and password are required.' in resp.data
 
 
 # ── Logout ──────────────────────────────────────────────────────────────────

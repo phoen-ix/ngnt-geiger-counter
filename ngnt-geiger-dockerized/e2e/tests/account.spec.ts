@@ -10,6 +10,7 @@ import {
 test('update the profile: email, pepper and public visibility', async ({ open }) => {
   const user = createUser({ pepper: null })
   const dev = createDevice(user, { name: `Shared ${uid()}` })
+  createDevice(createUser({ public: true })) // the guest's device filter needs two visible counters
   const page = await open(await signIn(user.username))
   await page.goto('/account')
   await expect(page.getByLabel('Username')).toHaveValue(user.username)

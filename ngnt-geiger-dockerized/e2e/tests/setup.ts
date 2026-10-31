@@ -32,6 +32,8 @@ test('admin password, SMTP to Mailpit, shared sessions', async () => {
     })
     expect(await res.text()).toContain('Password changed.')
     await api.dispose()
+    // The first password's file goes with it.
+    expect(() => execFileSync('docker', ['exec', CONTAINER.flask, 'test', '!', '-e', '/app/data/admin_initial_password.txt'])).not.toThrow()
   }
 
   const admin = await request.newContext({ baseURL: BASE, storageState: await signIn('admin') })

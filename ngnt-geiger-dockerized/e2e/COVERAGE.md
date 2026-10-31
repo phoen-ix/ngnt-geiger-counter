@@ -13,7 +13,7 @@ grep -n "flash(" app/app.py                                       # messages / e
 grep -n "elif msg.get\|if 'cpm' in msg" scripts/pm2/mqtt_bro_impulses.py   # 3 MQTT message kinds
 ```
 
-**123 items: 119 ✅, 4 ❌ (3 × (c), 1 × (a)).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
+**122 items: 118 ✅, 4 ❌ (3 × (c), 1 × (a)).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
 `main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`.
 
 ## Routes × roles (breadth)
@@ -68,7 +68,7 @@ no 5xx, no request leaving the stack.
 | Rate limit: register 5/min → 429 | ✅ `limits › POST /register answers 429 after 5 a minute` |
 | Rate limit: forgot-password 5/min → 429 | ✅ `limits › POST /forgot-password answers 429 after 5 a minute` |
 | CSRF: POST without token → 400 | ✅ `limits › a form posted without its CSRF token is refused` |
-| Bootstrap admin: random first password in `data/`, removed after the change | ✅ `setup › admin password, SMTP to Mailpit, shared sessions` (reads it, changes it) |
+| Bootstrap admin: random first password in `data/`, removed after the change | ✅ `setup › admin password, SMTP to Mailpit, shared sessions` (reads it, changes it, the file is gone) |
 
 ## Dashboard (`dashboard.spec.ts`)
 

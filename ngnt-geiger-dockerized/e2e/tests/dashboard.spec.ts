@@ -8,6 +8,8 @@ import { ADMIN_STATE, addReadings, createDevice, createUser, expect, q, signIn, 
 
 const card = (page: import('@playwright/test').Page, label: string) => page.locator('.card').filter({ hasText: label })
 const options = (page: import('@playwright/test').Page) => page.getByLabel('Device:').locator('option')
+const rows = (page: import('@playwright/test').Page) => page.getByRole('row').filter({ has: page.getByRole('cell') })
+const tab = (page: import('@playwright/test').Page, label: string) => page.getByRole('link', { name: label, exact: true })
 
 test('visibility: guests see public counters, users also their own, admins all', async ({ open }) => {
   const tag = uid()
@@ -17,6 +19,7 @@ test('visibility: guests see public counters, users also their own, admins all',
   const devPub = createDevice(pub, { name: `Public ${tag}` })
   const devPriv = createDevice(priv, { name: `Private ${tag}` })
   const devOwn = createDevice(viewer, { name: `Own ${tag}` })
+  createDevice(createUser({ public: true })) // the device filter needs two visible counters, even for the guest
   for (const d of [devPub, devPriv, devOwn]) addReadings(d.id, [{ minutesAgo: 5, cpm: 15 }])
 
   const sees = async (state: Parameters<typeof open>[0]) => {
@@ -48,8 +51,8 @@ test('the device filter shows one counter, keeps the range and the header drops 
   await expect(page.getByRole('heading', { name: 'Last 6 hours', exact: true })).toBeVisible()
   await expect(page.locator('header p')).toContainText('Last reading:')
   await expect(page.locator('header p')).not.toContainText('device:')
-  await expect(page.locator('tbody tr')).toHaveCount(2)
-  await expect(page.locator('tbody tr td:nth-child(4)')).toHaveText([a.name!, a.name!])
+  await expect(rows(page)).toHaveCount(2)
+  await expect(rows(page).getByRole('cell', { name: a.name!, exact: true })).toHaveCount(2)
   await expect(card(page, 'Device').locator('.card-value')).toHaveText(a.name!)
   await expect(card(page, 'Device').locator('.card-unit')).toHaveText('online')
   await expect(card(page, 'CPM').locator('.card-value')).toHaveText('21')
@@ -71,20 +74,20 @@ test('the time ranges: each lists the readings inside it', async ({ open }) => {
   ])
   const page = await open(await signIn(user.username))
   await page.goto(`/?device=${dev.id}`)
-  await expect(page.locator('.range-bar a.active')).toHaveText('Last 24 hours')
+  await expect(tab(page, 'Last 24 hours')).toHaveClass('active')
   for (const [label, count] of [['Last hour', 1], ['Last 6 hours', 2], ['Last 24 hours', 3], ['Last 7 days', 4]] as const) {
-    await page.getByRole('link', { name: label, exact: true }).click()
-    await expect(page.locator('.range-bar a.active')).toHaveText(label)
+    await tab(page, label).click()
+    await expect(tab(page, label)).toHaveClass('active')
     await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: `Recent measurements — ${label.toLowerCase()}` })).toBeVisible()
-    await expect(page.locator('tbody tr')).toHaveCount(count)
+    await expect(rows(page)).toHaveCount(count)
     expect(new URL(page.url()).searchParams.get('device')).toBe(dev.id)
     const points = await page.evaluate(() => (window as any).Chart.getChart('chart').data.datasets[0].data.length)
     expect(points).toBe(count)
   }
   // An unknown range is the default one.
   await page.goto(`/?range=1y&device=${dev.id}`)
-  await expect(page.locator('.range-bar a.active')).toHaveText('Last 24 hours')
+  await expect(tab(page, 'Last 24 hours')).toHaveClass('active')
   // The page reloads itself every minute with the same range and device.
   await page.goto(`/?range=6h&device=${dev.id}`)
   await expect(page.locator('meta[http-equiv="refresh"]')).toHaveAttribute('content', `60;url=?range=6h&device=${dev.id}`)
@@ -106,7 +109,7 @@ test('cards: dose rate turns orange above the alert threshold; 100+ readings', a
   await page.goto(`/?device=${hot.id}`)
   await expect(card(page, 'Dose rate').locator('.card-value')).toHaveClass(/orange/)
   await expect(card(page, 'Readings stored').locator('.card-value')).toHaveText('100+')
-  await expect(page.locator('tbody tr')).toHaveCount(100)
+  await expect(rows(page)).toHaveCount(100)
 })
 
 test('online means status online and seen within the offline timeout', async ({ open }) => {
@@ -135,7 +138,7 @@ test('timestamps are shown in the display timezone', async ({ open }) => {
   const page = await open(await signIn(user.username))
   await page.goto(`/?device=${dev.id}`)
   await expect(page.locator('header p strong')).toHaveText(vienna)
-  await expect(page.locator('tbody tr td').first()).toHaveText(vienna)
+  await expect(rows(page).getByRole('cell').first()).toHaveText(vienna)
 })
 
 test('a counter without readings: empty cards, chart and table', async ({ open }) => {

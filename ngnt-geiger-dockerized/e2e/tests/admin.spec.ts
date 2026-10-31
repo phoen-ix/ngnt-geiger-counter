@@ -52,6 +52,7 @@ test('promote a user to admin and back; the role applies without signing in agai
 test('toggle a user public and private', async ({ open }) => {
   const user = createUser()
   const dev = createDevice(user)
+  createDevice(createUser({ public: true })) // the guest's device filter needs two visible counters
   const page = await open(ADMIN_STATE)
   const guest = await open()
   await page.goto('/admin')

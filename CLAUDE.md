@@ -32,7 +32,8 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
   `queue_before_request(cursor)` (twice with `follow_redirects=True`). Details in HANDOVER.md.
 - `dashboard.html` loads Chart.js 4.4.0 from jsDelivr; `e2e/package.json` pins the same version for the tour's
   offline copy. Bump both together.
-- E2E: every test owns its users/devices (`uid()`, SQL in `e2e/tests/support.ts`); every sign-in goes through
+- E2E: every test owns its users/devices (`uid()`, SQL in `e2e/tests/support.ts`; the dashboard's device filter
+  only renders with two visible counters, so a test that reads it creates both); every sign-in goes through
   `signIn()`/`submitForm()`, which wait out the login/register/forgot-password rate limits (one IP for the whole
   suite). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores the defaults);
   `limits.spec.ts` runs last.
