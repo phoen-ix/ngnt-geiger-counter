@@ -81,17 +81,14 @@ def bootstrap_admin():
                 "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, 'admin')",
                 ('admin', pw_hash),
             )
-            print(f'\n{"="*60}', flush=True)
-            print(f'  Admin account created', flush=True)
-            print(f'  Username: admin', flush=True)
-            print(f'  Password: {password}', flush=True)
-            print(f'{"="*60}\n', flush=True)
-
+            # Only into the owner-only file: container logs are kept and shipped.
             os.makedirs('/app/data', exist_ok=True)
             fd = os.open('/app/data/admin_initial_password.txt',
                          os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, 'w') as f:
                 f.write(f'Username: admin\nPassword: {password}\n')
+            print('[bootstrap] admin account created; password in '
+                  'data/admin_initial_password.txt', flush=True)
     db.close()
 
 

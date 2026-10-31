@@ -212,12 +212,11 @@ docker compose up -d --build
 
 On first start:
 - MariaDB runs `dbinit.sql` and creates all tables
-- Flask creates an `admin` user with a random password, printed to stdout and saved to `data/admin_initial_password.txt`
+- Flask creates an `admin` user with a random password and saves it to `data/admin_initial_password.txt` (never to the logs)
 
 **3. Get the admin password**
 ```bash
-docker compose logs ngnt-geiger-flask | grep Password
-# or (the file belongs to root, mode 0600)
+# the file belongs to root, mode 0600
 docker compose exec ngnt-geiger-flask cat /app/data/admin_initial_password.txt
 ```
 

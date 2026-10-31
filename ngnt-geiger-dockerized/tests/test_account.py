@@ -1,10 +1,12 @@
 """Tests for account routes — profile, password change."""
 
+import os
+import re
 from unittest.mock import patch
 
 from werkzeug.security import generate_password_hash
 
-from tests.testutils import queue_before_request
+from tests.testutils import MockCursor, MockDB, queue_before_request
 
 
 # ── Auth requirement ────────────────────────────────────────────────────────
@@ -189,3 +191,16 @@ def test_change_password_removes_initial_file(auth_client, mock_cursor):
         })
 
     mock_remove.assert_called_once_with('/app/data/admin_initial_password.txt')
+
+
+def test_bootstrap_admin_keeps_the_password_out_of_the_logs(app_instance, tmp_path, capsys, monkeypatch):
+    import app as app_module
+    cursor = MockCursor()
+    cursor.add_response(fetchone={'cnt': 0})   # no users yet
+    real_open = os.open
+    monkeypatch.setattr(os, 'makedirs', lambda *a, **k: None)
+    monkeypatch.setattr(os, 'open', lambda path, *a: real_open(tmp_path / 'pw.txt', *a))
+    with patch('app.get_db', return_value=MockDB(cursor)):
+        app_module.bootstrap_admin()
+    password = re.search(r'^Password: (\S+)$', (tmp_path / 'pw.txt').read_text(), re.M).group(1)
+    assert password not in capsys.readouterr().out
