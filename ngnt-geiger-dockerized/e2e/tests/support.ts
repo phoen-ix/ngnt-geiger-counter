@@ -86,12 +86,12 @@ export function createDevice(
   opts: { name?: string | null; status?: 'online' | 'offline'; lastSeenMinutesAgo?: number; alert?: number } = {},
 ) {
   const mac = randomMac()
-  const { id, password } = mqttCredentials(mac, user.pepper ?? 'none')
+  const { id } = mqttCredentials(mac, user.pepper ?? 'none')
   const lastSeen = opts.lastSeenMinutesAgo == null ? 'NULL' : `UTC_TIMESTAMP() - INTERVAL ${opts.lastSeenMinutesAgo} MINUTE`
   sql(
-    `INSERT INTO devices (user_id, device_id, mac_address, display_name, mqtt_password, status, last_seen, alert_threshold, provisioned) ` +
+    `INSERT INTO devices (user_id, device_id, mac_address, display_name, status, last_seen, alert_threshold, provisioned) ` +
       `VALUES (${user.id}, ${q(id)}, ${q(mac)}, ${q(opts.name === undefined ? `Counter ${id.slice(-6)}` : opts.name)}, ` +
-      `${q(password)}, ${q(opts.status ?? 'offline')}, ${lastSeen}, ${opts.alert ?? 'NULL'}, TRUE);`,
+      `${q(opts.status ?? 'offline')}, ${lastSeen}, ${opts.alert ?? 'NULL'}, TRUE);`,
   )
   return { id, mac, name: opts.name === undefined ? `Counter ${id.slice(-6)}` : opts.name }
 }

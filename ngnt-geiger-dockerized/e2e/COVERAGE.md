@@ -99,7 +99,7 @@ no 5xx, no request leaving the stack.
 
 | Feature / state | Test |
 |---|---|
-| Register a device: lower-case MAC accepted, ID + password derived like the firmware, listed (offline, —, Yes) | ✅ `devices › register a device: credentials derived like the firmware, listed as not yet seen` |
+| Register a device: lower-case MAC accepted, ID derived like the firmware, no password column in the DB, listed (offline, —, Yes) | ✅ `devices › register a device: credentials derived like the firmware, listed as not yet seen` |
 | Malformed MAC: browser pattern, server message | ✅ `devices › a malformed MAC is refused, in the browser and by the server` |
 | Device ID already registered (any user) | ✅ `devices › a MAC whose device ID is taken, by anyone, is refused` |
 | No pepper: no form, link to account; server refuses the POST | ✅ `devices › without a pepper there is no form, only a link to the account page` |

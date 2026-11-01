@@ -65,8 +65,18 @@ def test_add_device_success(auth_client, mock_cursor):
 
     assert resp.status_code == 302
     mock_prov.assert_called_once()
-    device_id = mock_prov.call_args[0][0]
+    device_id, password = mock_prov.call_args[0]
     assert device_id == 'geiger_ddeeff'
+    # Only Mosquitto gets the password (as a hash in devices.conf), never the DB.
+    [(sql, params)] = [q for q in mock_cursor.execute_log if q[0].startswith('INSERT INTO devices')]
+    assert 'mqtt_password' not in sql
+    assert password not in params
+
+
+def test_startup_drops_the_plaintext_password_column(app_instance, mock_cursor):
+    import app as app_module
+    app_module.migrate_schema()
+    assert ('ALTER TABLE devices DROP COLUMN IF EXISTS mqtt_password', None) in mock_cursor.execute_log
 
 
 def test_add_device_invalid_mac(auth_client, mock_cursor):

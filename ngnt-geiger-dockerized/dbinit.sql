@@ -32,7 +32,6 @@ CREATE TABLE IF NOT EXISTS `devices` (
   `device_id`       VARCHAR(50)  NOT NULL UNIQUE COMMENT 'MQTT username (geiger_AABBCC)',
   `mac_address`     VARCHAR(17)  NOT NULL,
   `display_name`    VARCHAR(100) DEFAULT NULL,
-  `mqtt_password`   VARCHAR(64)  NOT NULL,
   `status`          ENUM('online','offline') NOT NULL DEFAULT 'offline',
   `last_seen`       DATETIME     DEFAULT NULL,
   `cpm_factor`      FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',

@@ -52,8 +52,8 @@ test("a counter cannot report readings or status for another user's device", asy
   const victimMac = randomMac()
   const victimDev = mqttCredentials(victimMac, victim.pepper!)
   sql(
-    `INSERT INTO devices (user_id, device_id, mac_address, mqtt_password, status, provisioned) ` +
-      `VALUES (${victim.id}, ${q(victimDev.id)}, ${q(victimMac)}, ${q(victimDev.password)}, 'offline', TRUE);`,
+    `INSERT INTO devices (user_id, device_id, mac_address, status, provisioned) ` +
+      `VALUES (${victim.id}, ${q(victimDev.id)}, ${q(victimMac)}, 'offline', TRUE);`,
   )
   const mac = randomMac()
   const own = mqttCredentials(mac, attacker.pepper!)

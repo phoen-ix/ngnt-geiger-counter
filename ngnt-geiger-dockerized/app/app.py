@@ -93,19 +93,33 @@ def bootstrap_admin():
     db.close()
 
 
+def migrate_schema():
+    """Schema changes for databases created by an older dbinit.sql. Runs on every start, so idempotent."""
+    db = get_db()
+    try:
+        with db.cursor() as cur:
+            # v3.0-3.5 wrote every device's MQTT password here in plaintext; nothing read it.
+            cur.execute("ALTER TABLE devices DROP COLUMN IF EXISTS mqtt_password")
+    finally:
+        db.close()
+
+
 # Run bootstrap with retries (DB might not be ready)
-def bootstrap_admin_with_retry():
+def bootstrap_with_retry():
     print('[bootstrap] waiting for database...', flush=True)
+    error = None
     for attempt in range(30):
         try:
+            migrate_schema()
             bootstrap_admin()
             return
-        except Exception:
+        except Exception as e:
+            error = e
             time.sleep(2)
-    print('[bootstrap] gave up waiting for database after 60s', flush=True)
+    print(f'[bootstrap] gave up after 60s: {error!r}', flush=True)
 
 
-bootstrap_admin_with_retry()
+bootstrap_with_retry()
 hash_legacy_device_passwords()
 
 
@@ -456,9 +470,9 @@ def devices():
                         flash(f'Device {device_id} already registered.', 'error')
                     else:
                         cur.execute(
-                            "INSERT INTO devices (user_id, device_id, mac_address, display_name, mqtt_password, provisioned) "
-                            "VALUES (%s, %s, %s, %s, %s, TRUE)",
-                            (user_id, device_id, mac, display_name, mqtt_password),
+                            "INSERT INTO devices (user_id, device_id, mac_address, display_name, provisioned) "
+                            "VALUES (%s, %s, %s, %s, TRUE)",
+                            (user_id, device_id, mac, display_name),
                         )
                         provision_device(device_id, mqtt_password)
                         flash(f'Device {device_id} registered and provisioned.', 'success')

@@ -1,7 +1,8 @@
 import { request } from '@playwright/test'
 
 import {
-  ADMIN_STATE, BASE, USER_STATE, createDevice, createUser, expect, flash, mqttPublish, postForm, q, randomMac, signIn, sql, test,
+  ADMIN_STATE, BASE, USER_STATE, createDevice, createUser, expect, flash, mqttCredentials, mqttPublish, postForm, q, randomMac, signIn,
+  sql, test,
 } from './support'
 
 /* The admin page's user list: role and visibility toggles, deleting a user,
@@ -70,11 +71,12 @@ test('toggle a user public and private', async ({ open }) => {
 test('delete a user after confirming: devices unprovisioned, their session ends', async ({ open }) => {
   const user = createUser()
   const target = await open(await signIn(user.username))
+  const mac = randomMac()
+  const { id: deviceId, password } = mqttCredentials(mac, user.pepper!)
   await target.goto('/devices')
-  await target.getByLabel('MAC Address').fill(randomMac())
+  await target.getByLabel('MAC Address').fill(mac)
   await target.getByRole('button', { name: 'Register Device' }).click()
-  await expect(flash(target)).toContainText('registered and provisioned.')
-  const [deviceId, password] = sql(`SELECT device_id, mqtt_password FROM devices WHERE user_id = ${user.id};`).split('\t')
+  await expect(flash(target)).toHaveText(`Device ${deviceId} registered and provisioned.`)
   await expect.poll(() => mqttPublish(deviceId, password, { id: deviceId, status: 'connected' }).ok).toBe(true)
 
   const page = await open(ADMIN_STATE)

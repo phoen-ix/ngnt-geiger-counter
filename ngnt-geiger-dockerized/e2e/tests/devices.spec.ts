@@ -12,7 +12,7 @@ test('register a device: credentials derived like the firmware, listed as not ye
   const user = createUser()
   const page = await open(await signIn(user.username))
   const mac = randomMac()
-  const { id, password } = mqttCredentials(mac, user.pepper!)
+  const { id } = mqttCredentials(mac, user.pepper!)
   await page.goto('/devices')
   await page.getByLabel('MAC Address').fill(mac.toLowerCase())
   await page.getByLabel('Display Name (optional)').fill('Rooftop')
@@ -22,7 +22,9 @@ test('register a device: credentials derived like the firmware, listed as not ye
   const row = page.getByRole('row').filter({ hasText: id })
   await expect(row.getByRole('cell')).toHaveText([id, 'Save', mac, 'offline', '—', 'Yes', 'Delete'])
   await expect(row.getByRole('textbox')).toHaveValue('Rooftop')
-  expect(sql(`SELECT mac_address, mqtt_password FROM devices WHERE device_id = ${q(id)};`)).toBe(`${mac}\t${password}`)
+  expect(sql(`SELECT mac_address FROM devices WHERE device_id = ${q(id)};`)).toBe(mac)
+  // The derived password goes to Mosquitto only, as a hash (mqtt.spec.ts logs in with it), never into the DB.
+  expect(sql(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'devices' AND column_name = 'mqtt_password';`)).toBe('0')
 })
 
 test('a malformed MAC is refused, in the browser and by the server', async ({ open }) => {

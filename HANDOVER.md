@@ -135,7 +135,6 @@ CREATE TABLE devices (
   device_id       VARCHAR(50)  NOT NULL UNIQUE,   -- MQTT username (geiger_AABBCC)
   mac_address     VARCHAR(17)  NOT NULL,
   display_name    VARCHAR(100) DEFAULT NULL,
-  mqtt_password   VARCHAR(64)  NOT NULL,
   status          ENUM('online','offline') NOT NULL DEFAULT 'offline',
   last_seen       DATETIME     DEFAULT NULL,
   cpm_factor      FLOAT        DEFAULT NULL,
@@ -150,6 +149,7 @@ CREATE TABLE devices (
 - Devices are registered via the web UI, not auto-created by the subscriber.
 - The subscriber only does `UPDATE` (no INSERT) — unregistered devices are ignored.
 - `ON DELETE CASCADE` ensures user deletion cleans up devices.
+- No password column: the MQTT password is derived from MAC + pepper whenever it is needed. v3.0–3.5 stored it in plaintext in `mqtt_password` (never read); `migrate_schema()` drops that column on start.
 
 ### `password_resets` table
 
@@ -217,6 +217,8 @@ Single-file Flask app with all routes. Key components:
 **Session security (`before_request`):** On every authenticated request, queries `pw_version` and `role` from the DB. If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login. Session timeout is loaded from the `session_timeout_minutes` setting and applied via `app.permanent_session_lifetime`.
 
 **Input validation:** Usernames restricted to `[a-zA-Z0-9_-]` (3-50 chars). User-controlled strings in JS contexts use `|tojson` filter to prevent XSS. Invalid `display_timezone` values fall back to UTC instead of crashing.
+
+**Schema migration:** On startup, `migrate_schema()` applies the schema changes an older `dbinit.sql` lacks (idempotent, every start): it drops `devices.mqtt_password`.
 
 **Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random password and saves it to `/app/data/admin_initial_password.txt` (mode 0600); the log only says where it is. The file is deleted when the admin changes their password.
 
@@ -309,7 +311,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 **Key design decisions:**
 
 - **`MockCursor` position advances on `fetchone()`/`fetchall()`, NOT on `execute()`** — this means INSERT/UPDATE/DELETE queries that don't fetch don't consume a response slot. Responses are queued with `add_response(fetchone=...)` or `add_response(fetchall=...)`.
-- **Bootstrap isolation** — `app.py` calls `bootstrap_admin_with_retry()` at import time. The session-scoped `app_instance` fixture patches `helpers.get_db` before importing `app` to prevent real DB connections.
+- **Bootstrap isolation** — `app.py` calls `bootstrap_with_retry()` (`migrate_schema()` + `bootstrap_admin()`) at import time. The session-scoped `app_instance` fixture patches `helpers.get_db` before importing `app` to prevent real DB connections.
 - **`before_request` overhead** — every authenticated request triggers 2 DB queries (user lookup + session timeout). The `queue_before_request(cursor)` helper queues these; every test with a logged-in session must call it.
 - **`follow_redirects=True` quirk** — when a POST redirects to a GET, `before_request` fires twice (once per request). Tests using `follow_redirects=True` must queue responses for both the POST and the redirected GET.
 - **CSRF/rate limiting** — disabled globally via `WTF_CSRF_ENABLED=False` and `RATELIMIT_ENABLED=False`. Dedicated tests in `test_middleware.py` re-enable them to verify they work.
@@ -340,7 +342,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 | Site name | `.env` (`SITE_NAME`) | Page titles, nav bar, email subjects |
 | Initial admin password | `data/admin_initial_password.txt` | Deleted on password change |
 | MQTT pepper | Per-user in DB (`users.pepper`) + device portal | Same value on both sides |
-| Device MQTT passwords | hashed in `config/mosquitto/devices.conf` (gitignored); plaintext in DB `devices.mqtt_password` | Managed by Flask provisioning |
+| Device MQTT passwords | hashed in `config/mosquitto/devices.conf` (gitignored); not stored in the DB, derived from MAC + pepper | Managed by Flask provisioning |
 | SMTP password | DB `settings` table | Configured in admin UI |
 
 **Never commit `.env`.** It is in `.gitignore`.
@@ -364,7 +366,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 
 2. **Synchronous DB in Flask** — PyMySQL is synchronous; each request blocks a Gunicorn worker during DB queries. With 2 workers this is fine for small deployments. For higher load, increase workers or switch to an async framework.
 
-3. **Pepper stored in plaintext** — The user's pepper is stored as plaintext in the DB because it needs to be used for credential derivation. The MQTT password derived from it is stored in plaintext in `devices.mqtt_password` (never read by the app); `devices.conf` holds only its hash.
+3. **Pepper stored in plaintext** — The user's pepper is stored as plaintext in the DB because it needs to be used for credential derivation. Anyone who can read the DB can derive every device's MQTT password from its MAC and the owner's pepper. The DB stores no password itself; `devices.conf` holds only its hash.
 
 4. **In-memory rate limiting** — Flask-Limiter uses in-memory storage, so limits are per Gunicorn worker and reset on restart. For stricter enforcement, configure a shared backend (Redis/Memcached) or use a reverse proxy.
 
@@ -400,11 +402,13 @@ docker logs -f ngnt-geiger-subscriber
 ```
 
 **Inserting a test measurement manually:**
-First register a device via the web UI, then:
+First register a device via the web UI. The DB holds no device password: derive it from the MAC and the owner's
+pepper the way the firmware and `helpers.derive_mqtt_credentials()` do, then publish with it:
 ```bash
+python3 -c 'import hashlib, hmac; print(hmac.new(b"<pepper>", b"<mac as aabbccddeeff>", hashlib.sha256).hexdigest()[:16])'
 docker exec -it ngnt-geiger-mosquitto \
   mosquitto_pub -h localhost -p 1883 \
-  -u <device_id> -P <mqtt_password> \
+  -u <device_id> -P <password> \
   -t /<device_id>/impulses \
   -m '{"id":"<device_id>","ts":"2026-03-01 12:00:00","cpm":15,"usvh":0.0855}'
 ```
