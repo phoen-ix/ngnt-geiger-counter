@@ -152,6 +152,6 @@ test('a counter without readings: empty cards, chart and table', async ({ open }
   await expect(card(page, 'Dose rate').locator('.card-value')).toHaveText('—')
   await expect(card(page, 'Readings stored')).toHaveCount(0)
   await expect(page.getByText('No data available for the last 24 hours.')).toBeVisible()
-  await expect(page.getByText('No measurements recorded yet.')).toBeVisible()
+  await expect(page.getByText('No measurements in the last 24 hours.')).toBeVisible()
   await expect(page.locator('canvas#chart')).toHaveCount(0)
 })

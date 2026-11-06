@@ -88,7 +88,7 @@
 <div class="section">
     <h2>Recent measurements &mdash; {{ range_label|lower }}</h2>
     {% if not recent %}
-        <p class="no-data">No measurements recorded yet.</p>
+        <p class="no-data">No measurements in the {{ range_label|lower }}.</p>
     {% else %}
     <table>
         <thead>
