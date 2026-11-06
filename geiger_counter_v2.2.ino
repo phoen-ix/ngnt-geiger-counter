@@ -371,6 +371,7 @@ void setup() {
   wifiManager.setShowInfoErase(false);
 
   if (!wifiManager.getWiFiIsSaved()) {
+    lcd.clear();
     lcd.setCursor(1, 0);
     lcd.print("NGNT-GeigerCounter");
     lcd.setCursor(4, 1);
