@@ -10,6 +10,8 @@ A DIY radiation monitor: a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266)
 
 Every screen of the web UI, with a line each: [screenshot gallery](docs/screenshots/README.md). The dashboard [on a phone](docs/screenshots/dashboard.mobile.png).
 
+Step by step: [user guide](docs/user-guide.md) (account, dashboard, adding your counter) · [admin guide](docs/admin-guide.md) (settings, users, backups, upgrades, reset).
+
 **Contents:** [Features](#features) · [Hardware](#hardware) · [Firmware](#firmware--geiger_counter_v22ino) · [Server quick start](#server-quick-start) · [Device provisioning](#device-provisioning-auto-provisioning-via-web-ui) · [Backend](#backend--ngnt-geiger-dockerized) · [Running tests](#running-tests) · [Screenshots](#screenshots) · [Repository layout](#repository-layout) · [Security notes](#security-notes) · [Open ideas](#open--future-ideas)
 
 ---
@@ -28,7 +30,7 @@ Every screen of the web UI, with a line each: [screenshot gallery](docs/screensh
 - **Dashboard**: latest CPM and dose rate, online status, a chart over the last hour, 6 hours, 24 hours or 7 days and the latest 100 readings. Reloads every 60 s and fits a phone.
 - **Device filter**: with two or more visible counters, one counter's readings at a time.
 - **Alert colour**: the dose-rate card turns orange above the alert threshold (admin setting, default 0.5 µSv/h).
-- **Visibility**: each user's counters are public or private; see [Dashboard visibility](#dashboard-visibility).
+- **Visibility**: each user's counters are public or private; see [who sees which counters](docs/admin-guide.md#who-sees-which-counters).
 - **Accounts**: registration (admins can close it), password reset by email, and a password change that signs out your other sessions.
 - **Device provisioning**: register a counter by its MAC; Mosquitto accepts it within 5 seconds.
 - **Admin panel**: global settings, SMTP and the user list (role, visibility, delete with all devices).
@@ -164,39 +166,22 @@ docker compose exec ngnt-geiger-flask cat /app/data/admin_initial_password.txt
 
 **4. Log in and configure**
 
-Navigate to `http://<your-server>:1880`, log in as `admin`, and:
-- Change the admin password (Account page) — this deletes `admin_initial_password.txt`
-- Set the **Base URL** (Admin > Global Settings) to your server's public URL (e.g. `https://geiger.example.com`) — used in password reset emails
-- Configure SMTP settings (Admin page) if you want password reset emails
-- Adjust global settings (timezone, alert thresholds, session timeout, registration open/disabled, etc.)
-
-<img src="docs/screenshots/admin.png" alt="Admin page: global settings, SMTP settings for password-reset email, and the user list with role, visibility and device count" width="800">
+Open `http://<your-server>:1880`, log in as `admin`, change the password and set the **Base URL**, SMTP and the other settings: [admin guide, first sign-in](docs/admin-guide.md#first-sign-in).
 
 **5. Register devices**
 
-Create user accounts, set peppers, and register devices via the Devices page. See [Device provisioning](#device-provisioning-auto-provisioning-via-web-ui).
+Users create accounts, set their pepper and register their counters: [user guide, adding your counter](docs/user-guide.md#adding-your-counter).
 
 ---
 
 ## Device provisioning (auto-provisioning via web UI)
 
-Since v3.0 the web UI provisions devices (the manual `add-device.sh` script is gone):
-
-1. Flash the device — on first boot it auto-generates a pepper and shows it on the LCD / serial
-2. Create a user account on the web dashboard
-3. In **Account** settings, set your MQTT pepper to the value shown on the device
-4. In **Devices**, enter your device's WiFi MAC address (also shown on the LCD after 12 failed MQTT attempts)
-5. The server derives the same MQTT credentials as the firmware and provisions them to Mosquitto automatically (within 5 seconds)
-6. The device connects on next retry cycle
+Since v3.0 the web UI provisions devices (the manual `add-device.sh` script is gone). The steps, from the counter's setup portal to the **Devices** page: [user guide](docs/user-guide.md#adding-your-counter).
 
 **How it works:**
 - Firmware and server both compute `username = geiger_<last 6 hex of MAC>` and `password = HMAC-SHA256(pepper, mac)[:16]`.
 - The pepper is stored per user, so different users can have different peppers.
 - The server keeps no device password: Mosquitto gets only its hash (`devices.conf`, Mosquitto's `$7$` format), and the database stores none.
-
-<img src="docs/screenshots/account.png" alt="Account page: email, MQTT pepper, public/private profile and the change-password form" width="800">
-
-<img src="docs/screenshots/devices.png" alt="Devices page: the register-device form and two registered counters, one online and one offline, with MAC, last seen and provisioning state" width="800">
 
 ---
 
@@ -228,49 +213,9 @@ Geiger counter
 
 Setup: [Server quick start](#server-quick-start).
 
-### Dashboard visibility
+### Visibility, backups, upgrades and reset
 
-- **Anonymous visitors** see devices belonging to users with public profiles
-- **Logged-in users** see their own devices plus public devices
-- **Admins** see all devices
-
-Pick one counter in the **Device** dropdown to see only its readings; an unplugged one shows as offline:
-
-<img src="docs/screenshots/dashboard-device-offline.png" alt="Dashboard filtered to the basement counter: its last reading two days ago, status offline, no readings in the last 24 hours" width="800">
-
-### Upgrading MariaDB
-
-- **Version:** `DOCKER_IMAGE_MARIADB_TAG` in `.env` (`.env.example` ships `12.3.3`). An existing install keeps its own value until you change it.
-- **In-place upgrade:** the service sets `MARIADB_AUTO_UPGRADE=1`, so after raising the tag the container upgrades `volumes/mariadb` on its first start.
-- **Dump first** (`docker compose exec ngnt-geiger-mariadb mariadb-dump ...`): a major-version upgrade cannot be rolled back.
-
-### Stored device passwords (upgrading from v3.5 or earlier)
-
-On its next start Flask removes the device passwords older versions kept:
-
-- **Database:** v3.0–3.5 wrote each device's MQTT password in plaintext into `devices.mqtt_password` (never read). The column is dropped.
-- **`devices.conf`:** plaintext `device_id password` lines from v3.4 or earlier become Mosquitto hashes.
-
-Registered counters keep working: their login is derived from MAC + pepper as before.
-
-### Leftovers in `app/` (upgrading from v3.4 or earlier)
-
-Older versions mounted `app/` read-write at `/app` with `data/` and `config/mosquitto/` nested inside. Docker left root-owned `app/data/`, `app/mosquitto-config/` (empty mount points) and `app/__pycache__/` in the checkout. The app is now mounted read-only at `/src`. After pulling, recreate the container and remove them once:
-
-```bash
-docker compose up -d ngnt-geiger-flask
-sudo rm -rf app/data app/mosquitto-config app/__pycache__
-```
-
-### Reset (wipe all data and start fresh)
-
-The containers write these directories as root and the MariaDB user, hence `sudo`:
-
-```bash
-docker compose down
-sudo rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
-docker compose up -d
-```
+Who sees which counters, what to back up, upgrading (MariaDB, older versions) and wiping all data: [admin guide](docs/admin-guide.md#who-sees-which-counters).
 
 ### Container overview
 
@@ -340,6 +285,7 @@ PORT_BASE=24800 scripts/docs-screenshots.sh /tmp/shots   # another port / output
 ngnt-geiger-counter/
 ├── geiger_counter_v2.2.ino          # ESP8266 firmware (Wemos D1 R2)
 ├── HANDOVER.md                      # Technical handover: design, schema, decisions
+├── docs/user-guide.md, admin-guide.md  # Step-by-step manuals
 ├── docs/screenshots/                # Web UI screenshots + gallery (generated)
 └── ngnt-geiger-dockerized/
     ├── app/                         # Flask web application

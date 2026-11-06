@@ -3,7 +3,7 @@
 ngnt-geiger-dockerized/.env
 
 # ── Auto-provisioned device credentials (hashed, managed by Flask)
-# The empty seed file is force-added; populated versions are gitignored.
+# Flask creates devices.conf on the first registration.
 ngnt-geiger-dockerized/config/mosquitto/devices.conf
 ngnt-geiger-dockerized/config/mosquitto/passwd.txt
 

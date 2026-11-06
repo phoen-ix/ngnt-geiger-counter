@@ -242,7 +242,7 @@ Single-file Flask app with all routes. Key components:
 - Admin: all devices
 
 **Device registration flow:**
-1. User must have pepper set (redirected to account if not)
+1. User must have pepper set (the page asks for it in the account settings if not)
 2. Validate MAC format (AA:BB:CC:DD:EE:FF)
 3. Derive MQTT credentials from MAC + pepper
 4. Check for duplicate device_id
@@ -423,6 +423,6 @@ docker exec -it ngnt-geiger-mariadb \
 ```bash
 cd ngnt-geiger-dockerized
 docker compose down
-sudo rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/
+sudo rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/ config/mosquitto/devices.conf
 docker compose up -d
 ```
