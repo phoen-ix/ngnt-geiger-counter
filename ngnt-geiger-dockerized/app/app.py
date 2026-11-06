@@ -569,11 +569,12 @@ def account():
                                 (pw_hash, user_id))
                 # Signs out the account's other sessions, not this one.
                 session['pw_version'] = session.get('pw_version', 0) + 1
-                # Remove initial password file if admin changes password
-                try:
-                    os.remove('/app/data/admin_initial_password.txt')
-                except FileNotFoundError:
-                    pass
+                # The bootstrap admin's first password is no longer valid: drop its file.
+                if session.get('username') == 'admin':
+                    try:
+                        os.remove('/app/data/admin_initial_password.txt')
+                    except FileNotFoundError:
+                        pass
                 flash('Password changed.', 'success')
 
         db.close()

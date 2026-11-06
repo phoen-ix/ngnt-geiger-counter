@@ -177,20 +177,26 @@ def test_change_password_mismatch(auth_client, mock_cursor):
     assert b'do not match' in resp.data
 
 
-def test_change_password_removes_initial_file(auth_client, mock_cursor):
-    queue_before_request(mock_cursor)
-    pw_hash = generate_password_hash('oldpassword')
-    mock_cursor.add_response(fetchone={'password_hash': pw_hash})
-
+def change_password(client, cursor):
+    queue_before_request(cursor)
+    cursor.add_response(fetchone={'password_hash': generate_password_hash('oldpassword')})
     with patch('app.os.remove') as mock_remove:
-        auth_client.post('/account', data={
+        client.post('/account', data={
             'action': 'change_password',
             'current_password': 'oldpassword',
             'new_password': 'newpassword123',
             'new_password2': 'newpassword123',
         })
+    return mock_remove
 
+
+def test_change_password_removes_initial_file(admin_client, mock_cursor):
+    mock_remove = change_password(admin_client, mock_cursor)
     mock_remove.assert_called_once_with('/app/data/admin_initial_password.txt')
+
+
+def test_other_users_password_change_keeps_initial_file(auth_client, mock_cursor):
+    change_password(auth_client, mock_cursor).assert_not_called()
 
 
 def test_bootstrap_admin_keeps_the_password_out_of_the_logs(app_instance, tmp_path, capsys, monkeypatch):
