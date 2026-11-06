@@ -321,6 +321,14 @@ def test_send_reset_email_no_tls():
     mock_server.login.assert_not_called()
 
 
+def test_send_reset_email_empty_from_uses_smtp_user():
+    from helpers import send_password_reset_email
+    settings = {'smtp_host': 'smtp.example.com', 'smtp_user': 'geiger@example.com', 'smtp_from': ''}
+    with patch('helpers.smtplib.SMTP') as mock_smtp:
+        send_password_reset_email('user@example.com', 'token123', settings)
+    assert mock_smtp.return_value.sendmail.call_args[0][0] == 'geiger@example.com'
+
+
 def test_send_reset_email_failure():
     from helpers import send_password_reset_email
     settings = {

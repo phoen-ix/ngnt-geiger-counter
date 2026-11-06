@@ -173,7 +173,7 @@ def send_password_reset_email(email: str, token: str, settings: dict) -> bool:
     smtp_port = int(settings.get('smtp_port', '587'))
     smtp_user = settings.get('smtp_user', '')
     smtp_password = settings.get('smtp_password', '')
-    smtp_from = settings.get('smtp_from', smtp_user)
+    smtp_from = settings.get('smtp_from') or smtp_user  # the From field may be saved empty
     smtp_tls = settings.get('smtp_tls', '1') == '1'
     site_name = os.environ.get('SITE_NAME', 'NGNT Geiger Counter')
 
