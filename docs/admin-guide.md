@@ -38,7 +38,7 @@ The name in the header and in emails is `SITE_NAME` in `.env`, not an admin sett
 
 | Setting | Default | Effect |
 |---------|---------|--------|
-| **Base URL** | empty | Start of the link in password-reset emails. Empty: the link points to `http://localhost:8000`, which no user can open. |
+| **Base URL** | empty | Start of the link in password-reset emails. Empty: no reset mail is sent (the link would lead nowhere). |
 | **Display Timezone** | `Europe/Vienna` | Timestamps on the dashboard, **Devices** and the user list. A tz database name such as `Europe/Berlin`. |
 | **Offline Timeout (minutes)** | `5` | A counter shows as offline when its last message is older than this, or when the broker reported it gone. |
 | **Default CPM Factor** | `0.0057` | Greyed out: each counter converts CPM to µSv/h itself (**CPM Factor** in its setup portal). |
@@ -57,10 +57,10 @@ There is no form to create a user: people register themselves. To add someone wh
 | **SMTP Host** | empty | Empty: no reset mail is sent. |
 | **SMTP Port** | `587` | |
 | **SMTP User**, **SMTP Password** | empty | Leave **SMTP User** empty for a server without login. |
-| **From Address** | empty | Empty: the **SMTP User** is the sender. |
-| **Use STARTTLS** | **Yes** | **No** sends without encryption (e.g. a relay on port 25). There is no implicit-TLS mode for port 465. |
+| **From Address** | empty | `Name <address>` or an address (the name defaults to `SITE_NAME`). Empty: the **SMTP User** is the sender. An address at `example.com`, `.local` or without a dot in the domain sends nothing. |
+| **Use STARTTLS** | **Yes** | **No** sends without encryption (e.g. a relay on port 25). Port `465` is always implicit TLS. The server certificate is verified. |
 
-To test, enter an email address under **Account**, sign out and use **Forgot password?** with your username. A mail that fails is only logged (`docker logs ngnt-geiger-flask`, line `[email] send failed`); the page shows the same answer either way. The link is valid for one hour. Only users with an email address in their account get one.
+To test, enter an email address under **Account**, sign out and use **Forgot password?** with your username. A mail that fails or is not sent is only logged (`docker logs ngnt-geiger-flask`, a line starting `reset mail`); the page shows the same answer either way. The link is valid for one hour. Only users with an email address in their account get one. The app greets the mail server (EHLO) with the domain of the sender; `SMTP_EHLO_NAME` in `.env` sets another name.
 
 ## Managing users
 

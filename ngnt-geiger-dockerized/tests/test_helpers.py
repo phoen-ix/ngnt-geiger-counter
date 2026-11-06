@@ -281,7 +281,7 @@ def test_send_reset_email_success():
         'smtp_port': '587',
         'smtp_user': 'user',
         'smtp_password': 'pass',
-        'smtp_from': 'noreply@example.com',
+        'smtp_from': 'noreply@geiger.example',
         'smtp_tls': '1',
         'base_url': 'https://geiger.example.com',
     }
@@ -295,7 +295,7 @@ def test_send_reset_email_success():
     mock_server.login.assert_called_once_with('user', 'pass')
     mock_server.sendmail.assert_called_once()
     call_args = mock_server.sendmail.call_args[0]
-    assert call_args[0] == 'noreply@example.com'
+    assert call_args[0] == 'noreply@geiger.example'
     assert call_args[1] == ['user@example.com']
     assert 'token123' in call_args[2]
 
@@ -307,9 +307,9 @@ def test_send_reset_email_no_tls():
         'smtp_port': '25',
         'smtp_user': '',
         'smtp_password': '',
-        'smtp_from': 'noreply@example.com',
+        'smtp_from': 'noreply@geiger.example',
         'smtp_tls': '0',
-        'base_url': '',
+        'base_url': 'https://geiger.example.com',
     }
     with patch('helpers.smtplib.SMTP') as mock_smtp:
         mock_server = MagicMock()
@@ -323,10 +323,11 @@ def test_send_reset_email_no_tls():
 
 def test_send_reset_email_empty_from_uses_smtp_user():
     from helpers import send_password_reset_email
-    settings = {'smtp_host': 'smtp.example.com', 'smtp_user': 'geiger@example.com', 'smtp_from': ''}
+    settings = {'smtp_host': 'smtp.example.com', 'smtp_user': 'geiger@geiger.example', 'smtp_from': '',
+                'base_url': 'https://geiger.example.com'}
     with patch('helpers.smtplib.SMTP') as mock_smtp:
         send_password_reset_email('user@example.com', 'token123', settings)
-    assert mock_smtp.return_value.sendmail.call_args[0][0] == 'geiger@example.com'
+    assert mock_smtp.return_value.sendmail.call_args[0][0] == 'geiger@geiger.example'
 
 
 def test_send_reset_email_failure():
@@ -336,11 +337,66 @@ def test_send_reset_email_failure():
         'smtp_port': '587',
         'smtp_user': 'user',
         'smtp_password': 'pass',
-        'smtp_from': 'noreply@example.com',
+        'smtp_from': 'noreply@geiger.example',
         'smtp_tls': '1',
-        'base_url': '',
+        'base_url': 'https://geiger.example.com',
     }
     with patch('helpers.smtplib.SMTP', side_effect=ConnectionRefusedError('refused')):
         result = send_password_reset_email('user@example.com', 'token123', settings)
 
     assert result is False
+
+
+RESET_SMTP = {'smtp_host': 'smtp.example.com', 'smtp_port': '587', 'smtp_from': 'noreply@geiger.example',
+              'base_url': 'https://geiger.example.com'}
+
+
+def test_send_reset_email_headers_ehlo_and_verified_tls(monkeypatch):
+    import email
+    import ssl
+    from helpers import send_password_reset_email
+    monkeypatch.setenv('SITE_NAME', 'Geiger')
+    with patch('helpers.smtplib.SMTP') as mock_smtp:
+        assert send_password_reset_email('user@example.com', 'token123', RESET_SMTP)
+    assert mock_smtp.call_args.kwargs == {'local_hostname': 'geiger.example', 'timeout': 10}
+    context = mock_smtp.return_value.starttls.call_args.kwargs['context']
+    assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
+    msg = email.message_from_string(mock_smtp.return_value.sendmail.call_args[0][2])
+    assert msg['From'] == 'Geiger <noreply@geiger.example>'
+    assert msg['Message-ID'].endswith('@geiger.example>') and msg['Date']
+    assert msg['Auto-Submitted'] == 'auto-generated'
+    assert msg.get_content_type() == 'text/plain'
+
+
+def test_send_reset_email_ehlo_name_from_env(monkeypatch):
+    from helpers import send_password_reset_email
+    monkeypatch.setenv('SMTP_EHLO_NAME', 'mx.geiger.example')
+    with patch('helpers.smtplib.SMTP') as mock_smtp:
+        assert send_password_reset_email('user@example.com', 'token123', RESET_SMTP)
+    assert mock_smtp.call_args.kwargs['local_hostname'] == 'mx.geiger.example'
+
+
+def test_send_reset_email_port_465_is_implicit_tls():
+    import ssl
+    from helpers import send_password_reset_email
+    with patch('helpers.smtplib.SMTP_SSL') as mock_ssl, patch('helpers.smtplib.SMTP') as mock_smtp:
+        assert send_password_reset_email('user@example.com', 'token123', {**RESET_SMTP, 'smtp_port': '465'})
+    mock_smtp.assert_not_called()
+    assert mock_ssl.call_args.kwargs['context'].verify_mode == ssl.CERT_REQUIRED
+    mock_ssl.return_value.starttls.assert_not_called()
+
+
+@pytest.mark.parametrize('sender', ['noreply@example.com', 'geiger@geiger.local', 'geiger@localhost', ''])
+def test_send_reset_email_refuses_a_placeholder_from(sender):
+    from helpers import send_password_reset_email
+    with patch('helpers.smtplib.SMTP') as mock_smtp:
+        assert send_password_reset_email('user@example.com', 'token123', {**RESET_SMTP, 'smtp_from': sender}) is False
+    mock_smtp.assert_not_called()
+
+
+def test_send_reset_email_without_base_url_sends_nothing():
+    """The link used to fall back to http://localhost:8000, which no user can open."""
+    from helpers import send_password_reset_email
+    with patch('helpers.smtplib.SMTP') as mock_smtp:
+        assert send_password_reset_email('user@example.com', 'token123', {**RESET_SMTP, 'base_url': ''}) is False
+    mock_smtp.assert_not_called()

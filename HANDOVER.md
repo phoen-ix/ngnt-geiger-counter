@@ -257,7 +257,7 @@ Single-file Flask app with all routes. Key components:
 - `login_required`, `admin_required`: decorators checking `session['user_id']` / `session['role']`
 - `derive_mqtt_credentials(mac, pepper)`: HMAC-SHA256 credential derivation matching firmware
 - `provision_device()` / `unprovision_device()`: manage `devices.conf` (Mosquitto `$7$` hashes from `mosquitto_password_hash()`) with file locking (`fcntl.flock`) and `.reload` flag; `hash_legacy_device_passwords()` hashes plaintext lines of older versions on start
-- `send_password_reset_email()`: SMTP using settings from DB; `base_url` from DB settings, `site_name` from `SITE_NAME` env var
+- `send_password_reset_email()`: SMTP using settings from DB (465 = implicit TLS, certificate verified, 10 s timeout); `base_url` from DB settings (empty: nothing sent), `site_name` from `SITE_NAME` env var, EHLO = `SMTP_EHLO_NAME` or the From domain; Message-ID, Date, `Auto-Submitted`; refuses a placeholder From
 
 ### `app/templates/`
 
