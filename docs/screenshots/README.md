@@ -82,7 +82,7 @@ other sessions).
 ## Admin
 
 `/admin` (admins only): global settings (base URL for reset links, display timezone, offline timeout, alert
-threshold, session timeout, registration), SMTP for password-reset email, and the user list where admins switch a
+threshold, session timeout, registration), SMTP for password-reset email (incl. the EHLO name), and the user list where admins switch a
 user's role or visibility or delete the user with all their devices.
 
 <img src="admin.png" alt="Admin page: global settings, SMTP settings and the user list with role, visibility, device count and creation date" width="800">

@@ -164,6 +164,7 @@ INSERT IGNORE INTO `settings` (`key`, `value`) VALUES
   ('smtp_password',           ''),
   ('smtp_from',               ''),
   ('smtp_tls',                '1'),
+  ('smtp_ehlo_name',          ''),
   ('base_url',                ''),
   ('registration_enabled',    '1'),
   ('session_timeout_minutes', '1440');

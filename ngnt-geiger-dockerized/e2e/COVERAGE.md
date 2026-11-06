@@ -147,7 +147,7 @@ no 5xx, no request leaving the stack.
 | Invalid settings refused (empty session/offline timeout locked everyone out / broke the dashboard; text threshold; unknown timezone; over-255 value) | ✅ `global › invalid settings are refused, nothing is saved and nobody is locked out` |
 | Base URL used in the reset mail | ✅ `auth › password reset › mail link sets a new password once; the old one stops working` |
 | SMTP settings saved and shown, password masked, STARTTLS select | ✅ `global › SMTP settings are saved and shown again, the password masked` |
-| SMTP port empty refused (broke every reset mail) | ✅ same |
+| SMTP port empty refused (broke every reset mail); EHLO name saved, placeholder hint, a space refused | ✅ same |
 | SMTP delivery (host, port, from, no TLS) | ✅ `setup` + `auth › password reset › mail link …` (Mailpit) |
 
 ## Hardware

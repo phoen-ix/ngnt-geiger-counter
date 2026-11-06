@@ -58,9 +58,10 @@ There is no form to create a user: people register themselves. To add someone wh
 | **SMTP Port** | `587` | |
 | **SMTP User**, **SMTP Password** | empty | Leave **SMTP User** empty for a server without login. |
 | **From Address** | empty | `Name <address>` or an address (the name defaults to `SITE_NAME`). Empty: the **SMTP User** is the sender. An address at `example.com`, `.local` or without a dot in the domain sends nothing. |
+| **EHLO Name** | empty | The name the app greets the mail server with (EHLO). Empty: the domain of the sender. Letters, digits, dots and hyphens only. |
 | **Use STARTTLS** | **Yes** | **No** sends without encryption (e.g. a relay on port 25). Port `465` is always implicit TLS. The server certificate is verified. |
 
-To test, enter an email address under **Account**, sign out and use **Forgot password?** with your username. A mail that fails or is not sent is only logged (`docker logs ngnt-geiger-flask`, a line starting `reset mail`); the page shows the same answer either way. The link is valid for one hour. Only users with an email address in their account get one. The app greets the mail server (EHLO) with the domain of the sender; `SMTP_EHLO_NAME` in `.env` sets another name.
+To test, enter an email address under **Account**, sign out and use **Forgot password?** with your username. A mail that fails or is not sent is only logged (`docker logs ngnt-geiger-flask`, a line starting `reset mail`); the page shows the same answer either way. The link is valid for one hour. Only users with an email address in their account get one.
 
 ## Managing users
 

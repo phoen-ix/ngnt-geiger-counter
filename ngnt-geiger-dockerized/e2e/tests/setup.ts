@@ -45,6 +45,7 @@ test('admin password, SMTP to Mailpit, shared sessions', async () => {
     smtp_password: '',
     smtp_from: 'geiger@geiger-e2e.example',
     smtp_tls: '0',
+    smtp_ehlo_name: '',
   })
   expect(await smtp.text()).toContain('SMTP settings saved.')
   const settings = await postForm(admin, '/admin', {

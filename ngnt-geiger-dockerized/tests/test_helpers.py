@@ -368,11 +368,11 @@ def test_send_reset_email_headers_ehlo_and_verified_tls(monkeypatch):
     assert msg.get_content_type() == 'text/plain'
 
 
-def test_send_reset_email_ehlo_name_from_env(monkeypatch):
+def test_send_reset_email_ehlo_name_from_settings():
     from helpers import send_password_reset_email
-    monkeypatch.setenv('SMTP_EHLO_NAME', 'mx.geiger.example')
     with patch('helpers.smtplib.SMTP') as mock_smtp:
-        assert send_password_reset_email('user@example.com', 'token123', RESET_SMTP)
+        assert send_password_reset_email('user@example.com', 'token123',
+                                         {**RESET_SMTP, 'smtp_ehlo_name': 'mx.geiger.example'})
     assert mock_smtp.call_args.kwargs['local_hostname'] == 'mx.geiger.example'
 
 

@@ -186,6 +186,7 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 | `smtp_password` | *(empty)* | Password reset email |
 | `smtp_from` | *(empty)* | Password reset email |
 | `smtp_tls` | `1` | Password reset email |
+| `smtp_ehlo_name` | *(empty)* | Password reset email: EHLO name (empty: the From domain) |
 | `registration_enabled` | `1` | Register route (open/disabled) |
 | `session_timeout_minutes` | `1440` | Session cookie lifetime (admin-configurable) |
 
@@ -218,7 +219,7 @@ Single-file Flask app with all routes. Key components:
 
 **Input validation:** Usernames restricted to `[a-zA-Z0-9_-]` (3-50 chars). User-controlled strings in JS contexts use `|tojson` filter to prevent XSS. Invalid `display_timezone` values fall back to UTC instead of crashing.
 
-**Schema migration:** On startup, `migrate_schema()` applies the schema changes an older `dbinit.sql` lacks (idempotent, every start): it drops `devices.mqtt_password`.
+**Schema migration:** On startup, `migrate_schema()` applies the schema changes an older `dbinit.sql` lacks (idempotent, every start): it drops `devices.mqtt_password` and adds the `settings` rows added since (`INSERT IGNORE`: `smtp_ehlo_name`).
 
 **Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random password and saves it to `/app/data/admin_initial_password.txt` (mode 0600); the log only says where it is. The file is deleted when the admin changes their password.
 
@@ -257,7 +258,7 @@ Single-file Flask app with all routes. Key components:
 - `login_required`, `admin_required`: decorators checking `session['user_id']` / `session['role']`
 - `derive_mqtt_credentials(mac, pepper)`: HMAC-SHA256 credential derivation matching firmware
 - `provision_device()` / `unprovision_device()`: manage `devices.conf` (Mosquitto `$7$` hashes from `mosquitto_password_hash()`) with file locking (`fcntl.flock`) and `.reload` flag; `hash_legacy_device_passwords()` hashes plaintext lines of older versions on start
-- `send_password_reset_email()`: SMTP using settings from DB (465 = implicit TLS, certificate verified, 10 s timeout); `base_url` from DB settings (empty: nothing sent), `site_name` from `SITE_NAME` env var, EHLO = `SMTP_EHLO_NAME` or the From domain; Message-ID, Date, `Auto-Submitted`; refuses a placeholder From
+- `send_password_reset_email()`: SMTP using settings from DB (465 = implicit TLS, certificate verified, 10 s timeout); `base_url` from DB settings (empty: nothing sent), `site_name` from `SITE_NAME` env var, EHLO = the `smtp_ehlo_name` setting or the From domain; Message-ID, Date, `Auto-Submitted`; refuses a placeholder From
 
 ### `app/templates/`
 

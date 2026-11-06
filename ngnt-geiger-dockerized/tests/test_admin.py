@@ -82,11 +82,13 @@ def test_save_smtp(admin_client, mock_cursor):
         'smtp_password': 'pass',
         'smtp_from': 'noreply@example.com',
         'smtp_tls': '1',
+        'smtp_ehlo_name': 'mx.example.com',
     })
     assert resp.status_code == 302
-    setting_calls = [sql for sql, _ in mock_cursor.execute_log
+    setting_calls = [params for sql, params in mock_cursor.execute_log
                      if 'INSERT INTO settings' in sql]
-    assert len(setting_calls) == 6  # one per SMTP_KEY
+    assert len(setting_calls) == 7  # one per SMTP_KEY
+    assert ('smtp_ehlo_name', 'mx.example.com') in setting_calls
 
 
 # ── Toggle role ─────────────────────────────────────────────────────────────

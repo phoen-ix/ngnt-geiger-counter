@@ -73,6 +73,7 @@ DEFAULT_SETTINGS = {
     'smtp_password': '',
     'smtp_from': '',
     'smtp_tls': '1',
+    'smtp_ehlo_name': '',
 }
 
 

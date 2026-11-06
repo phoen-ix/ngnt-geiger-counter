@@ -207,7 +207,7 @@ def send_password_reset_email(email: str, token: str, settings: dict) -> bool:
     msg['Message-ID'] = make_msgid(domain=domain)
     msg['Auto-Submitted'] = 'auto-generated'
 
-    ehlo_name = os.environ.get('SMTP_EHLO_NAME') or domain
+    ehlo_name = settings.get('smtp_ehlo_name') or domain
     context = ssl.create_default_context()
     try:
         if smtp_port == 465:

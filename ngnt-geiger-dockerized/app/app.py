@@ -100,6 +100,8 @@ def migrate_schema():
         with db.cursor() as cur:
             # v3.0-3.5 wrote every device's MQTT password here in plaintext; nothing read it.
             cur.execute("ALTER TABLE devices DROP COLUMN IF EXISTS mqtt_password")
+            # Settings rows added after dbinit.sql seeded the database (it runs only on a new one).
+            cur.execute("INSERT IGNORE INTO settings (`key`, `value`) VALUES ('smtp_ehlo_name', '')")
     finally:
         db.close()
 
@@ -598,7 +600,7 @@ SETTINGS_KEYS = [
     'session_timeout_minutes',
 ]
 SMTP_KEYS = [
-    'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_tls',
+    'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_tls', 'smtp_ehlo_name',
 ]
 # The admin form's labels, for its error messages.
 SETTING_LABELS = {
@@ -607,7 +609,7 @@ SETTING_LABELS = {
     'default_alert_threshold': 'Default Alert Threshold (\u03bcSv/h)', 'registration_enabled': 'Registration',
     'session_timeout_minutes': 'Session Timeout (minutes)', 'smtp_host': 'SMTP Host', 'smtp_port': 'SMTP Port',
     'smtp_user': 'SMTP User', 'smtp_password': 'SMTP Password', 'smtp_from': 'From Address',
-    'smtp_tls': 'Use STARTTLS',
+    'smtp_tls': 'Use STARTTLS', 'smtp_ehlo_name': 'EHLO Name',
 }
 
 
@@ -621,6 +623,8 @@ def setting_error(key: str, val: str) -> str | None:
         return f'{label} must be a whole number of at least 1.'
     if key == 'smtp_port' and not (re.fullmatch('[0-9]+', val) and 1 <= int(val) <= 65535):
         return f'{label} must be a port number (1-65535).'
+    if key == 'smtp_ehlo_name' and not re.fullmatch('[A-Za-z0-9.-]*', val):
+        return f'{label} may only contain letters, digits, dots and hyphens.'
     if key == 'default_alert_threshold':
         try:
             if float(val) >= 0:
