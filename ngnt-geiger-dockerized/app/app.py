@@ -3,20 +3,26 @@ import os
 import re
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from flask import (Flask, flash, redirect, render_template, request, session,
-                   url_for)
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from helpers import (admin_required, derive_mqtt_credentials, get_db,
-                     get_settings, hash_legacy_device_passwords, login_required,
-                     provision_device, send_password_reset_email,
-                     unprovision_device)
+from helpers import (
+    admin_required,
+    derive_mqtt_credentials,
+    get_db,
+    get_settings,
+    hash_legacy_device_passwords,
+    login_required,
+    provision_device,
+    send_password_reset_email,
+    unprovision_device,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +117,7 @@ def migrate_schema():
 def bootstrap_with_retry():
     print('[bootstrap] waiting for database...', flush=True)
     error = None
-    for attempt in range(30):
+    for _ in range(30):
         try:
             migrate_schema()
             bootstrap_admin()
@@ -131,7 +137,7 @@ hash_legacy_device_passwords()
 def utc_to_local(utc: datetime | str, tz_name: str) -> str:
     if isinstance(utc, str):
         utc = datetime.strptime(utc, '%Y-%m-%d %H:%M:%S')
-    dt = utc.replace(tzinfo=timezone.utc)
+    dt = utc.replace(tzinfo=UTC)
     try:
         local = dt.astimezone(ZoneInfo(tz_name))
     except KeyError:
@@ -153,8 +159,8 @@ def is_device_online(device: dict, offline_timeout: int) -> bool:
     if isinstance(last_seen, str):
         last_seen = datetime.strptime(last_seen, '%Y-%m-%d %H:%M:%S')
     if last_seen.tzinfo is None:
-        last_seen = last_seen.replace(tzinfo=timezone.utc)
-    age_min = (datetime.now(timezone.utc) - last_seen).total_seconds() / 60
+        last_seen = last_seen.replace(tzinfo=UTC)
+    age_min = (datetime.now(UTC) - last_seen).total_seconds() / 60
     return age_min <= offline_timeout
 
 
@@ -620,7 +626,8 @@ def setting_error(key: str, val: str) -> str | None:
     label = SETTING_LABELS[key]
     if len(val) > 255:
         return f'{label} can be at most 255 characters.'
-    if key in ('offline_timeout_minutes', 'session_timeout_minutes') and not (re.fullmatch('[0-9]+', val) and int(val) >= 1):
+    if key in ('offline_timeout_minutes', 'session_timeout_minutes') and not (
+            re.fullmatch('[0-9]+', val) and int(val) >= 1):
         return f'{label} must be a whole number of at least 1.'
     if key == 'smtp_port' and not (re.fullmatch('[0-9]+', val) and 1 <= int(val) <= 65535):
         return f'{label} must be a port number (1-65535).'

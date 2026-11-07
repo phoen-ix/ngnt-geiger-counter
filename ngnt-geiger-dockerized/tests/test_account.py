@@ -8,7 +8,6 @@ from werkzeug.security import generate_password_hash
 
 from tests.testutils import MockCursor, MockDB, queue_before_request
 
-
 # ── Auth requirement ────────────────────────────────────────────────────────
 
 def test_account_requires_login(client):

@@ -2,8 +2,7 @@
 
 from unittest.mock import patch
 
-from tests.testutils import MockCursor, MockDB, queue_settings
-
+from tests.testutils import queue_settings
 
 # ── before_request: user deleted ────────────────────────────────────────────
 

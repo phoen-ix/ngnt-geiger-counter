@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from tests.testutils import queue_before_request, queue_settings
 
-
 # ── Auth requirements ───────────────────────────────────────────────────────
 
 def test_admin_requires_login(client):

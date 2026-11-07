@@ -4,7 +4,7 @@ A DIY radiation monitor: a RadiationD v1.1 Cajoe sensor, a Wemos D1 R2 (ESP8266)
 
 <img src="docs/screenshots/dashboard.png" alt="Web dashboard: CPM, dose rate and online status of the balcony counter, a 24-hour chart and the latest readings" width="800">
 
-**Status: v3.5.** Hardware, firmware v2.2 and the dockerized backend are done; CI runs pytest, pip-audit, the end-to-end suite and the screenshot tour. Open ideas are at the end.
+**Status: v3.5.** Hardware, firmware v2.2 and the dockerized backend are done; CI runs ruff, pytest, pip-audit, the end-to-end suite and the screenshot tour. Open ideas are at the end.
 
 ![assembled device](https://user-images.githubusercontent.com/100175489/219118323-df211fda-93e7-4437-bd8e-3e14d5e2e7f8.jpg)
 
@@ -237,6 +237,7 @@ The test suite runs on the host (no Docker needed) and uses mocked DB connection
 ```bash
 cd ngnt-geiger-dockerized
 pip install -r app/requirements-dev.txt
+ruff check .
 python -m pytest -v
 ```
 
@@ -292,7 +293,7 @@ ngnt-geiger-counter/
     │   ├── app.py                   # Routes, schema migration, admin bootstrap
     │   ├── helpers.py               # Credential derivation, provisioning, auth
     │   ├── requirements.txt         # Production deps (pinned)
-    │   ├── requirements-dev.txt     # Adds pytest for local testing
+    │   ├── requirements-dev.txt     # Adds pytest and ruff for local testing
     │   ├── static/style.css
     │   └── templates/               # Jinja2 templates
     ├── tests/                       # pytest suite (mocked DB)

@@ -6,7 +6,6 @@ from werkzeug.security import generate_password_hash
 
 from tests.testutils import queue_before_request, queue_settings
 
-
 # ── Login ───────────────────────────────────────────────────────────────────
 
 def test_login_get_renders_form(client):

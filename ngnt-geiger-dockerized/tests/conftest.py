@@ -20,7 +20,6 @@ os.environ.setdefault('SITE_NAME', 'Test Geiger')
 
 from tests.testutils import MockCursor, MockDB  # noqa: E402
 
-
 # ── App fixture (session-scoped) ────────────────────────────────────────────
 
 @pytest.fixture(scope='session')

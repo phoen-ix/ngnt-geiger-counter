@@ -1,0 +1,7 @@
+target-version = "py315"
+line-length = 120
+# app/ is on sys.path in the image and in the tests: `helpers` is first-party.
+src = ["app"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]

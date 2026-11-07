@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 from tests.testutils import queue_before_request, queue_settings
 
-
 # ── Auth requirement ────────────────────────────────────────────────────────
 
 def test_devices_requires_login(client):

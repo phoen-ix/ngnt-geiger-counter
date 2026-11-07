@@ -2,14 +2,11 @@
 
 import base64
 import hashlib
-import os
-import re
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tests.testutils import MockCursor, MockDB
-
 
 # ── derive_mqtt_credentials ─────────────────────────────────────────────────
 
@@ -88,7 +85,7 @@ def test_provision_device_idempotent(tmp_path):
     with patch('helpers.MOSQUITTO_CONFIG_DIR', str(tmp_path)):
         provision_device('geiger_aabbcc', 'secret123')
         provision_device('geiger_aabbcc', 'secret123')
-    lines = [l for l in conf.read_text().splitlines() if l.strip()]
+    lines = [line for line in conf.read_text().splitlines() if line.strip()]
     assert len(lines) == 1
 
 
@@ -163,7 +160,7 @@ def test_unprovision_device_preserves_others(tmp_path):
     conf.write_text('geiger_aabbcc pw1\ngeiger_ddeeff pw2\ngeiger_112233 pw3\n')
     with patch('helpers.MOSQUITTO_CONFIG_DIR', str(tmp_path)):
         unprovision_device('geiger_ddeeff')
-    lines = [l for l in conf.read_text().splitlines() if l.strip()]
+    lines = [line for line in conf.read_text().splitlines() if line.strip()]
     assert len(lines) == 2
     assert 'geiger_aabbcc' in conf.read_text()
     assert 'geiger_112233' in conf.read_text()
@@ -196,8 +193,9 @@ def test_get_settings_returns_dict():
 
 def test_login_required_redirects(app_instance):
     with app_instance.test_request_context():
-        from helpers import login_required
         from flask import session
+
+        from helpers import login_required
 
         @login_required
         def dummy():
@@ -211,8 +209,9 @@ def test_login_required_redirects(app_instance):
 
 def test_login_required_passes(app_instance):
     with app_instance.test_request_context():
-        from helpers import login_required
         from flask import session
+
+        from helpers import login_required
 
         @login_required
         def dummy():
@@ -224,8 +223,9 @@ def test_login_required_passes(app_instance):
 
 def test_admin_required_redirects_no_session(app_instance):
     with app_instance.test_request_context():
-        from helpers import admin_required
         from flask import session
+
+        from helpers import admin_required
 
         @admin_required
         def dummy():
@@ -239,8 +239,9 @@ def test_admin_required_redirects_no_session(app_instance):
 
 def test_admin_required_redirects_non_admin(app_instance):
     with app_instance.test_request_context():
-        from helpers import admin_required
         from flask import session
+
+        from helpers import admin_required
 
         @admin_required
         def dummy():
@@ -254,8 +255,9 @@ def test_admin_required_redirects_non_admin(app_instance):
 
 def test_admin_required_passes(app_instance):
     with app_instance.test_request_context():
-        from helpers import admin_required
         from flask import session
+
+        from helpers import admin_required
 
         @admin_required
         def dummy():
@@ -354,6 +356,7 @@ RESET_SMTP = {'smtp_host': 'smtp.example.com', 'smtp_port': '587', 'smtp_from': 
 def test_send_reset_email_headers_ehlo_and_verified_tls(monkeypatch):
     import email
     import ssl
+
     from helpers import send_password_reset_email
     monkeypatch.setenv('SITE_NAME', 'Geiger')
     with patch('helpers.smtplib.SMTP') as mock_smtp:
@@ -378,6 +381,7 @@ def test_send_reset_email_ehlo_name_from_settings():
 
 def test_send_reset_email_port_465_is_implicit_tls():
     import ssl
+
     from helpers import send_password_reset_email
     with patch('helpers.smtplib.SMTP_SSL') as mock_ssl, patch('helpers.smtplib.SMTP') as mock_smtp:
         assert send_password_reset_email('user@example.com', 'token123', {**RESET_SMTP, 'smtp_port': '465'})

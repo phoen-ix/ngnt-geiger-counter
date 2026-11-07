@@ -4,12 +4,12 @@
 
 All web-app work happens in `ngnt-geiger-dockerized/`.
 
-- Tests (mocked DB, no Docker): `pip install -r app/requirements-dev.txt && python -m pytest`
+- Tests (mocked DB, no Docker): `pip install -r app/requirements-dev.txt && ruff check . && python -m pytest`
 - Docs screenshots (Docker + Node 26): `cd e2e && npm ci && npx playwright install chromium && cd .. && scripts/docs-screenshots.sh`
   (`PORT_BASE=24800 …` on the fleet VM, wrapped in `slot heavy ngnt-geiger-counter -- …`)
 - E2E (Docker + Node 26, whole stack incl. Mosquitto, subscriber, Mailpit): `scripts/e2e.sh [playwright args]`
   (`PORT_BASE=24800 …` via `slot heavy` on the fleet VM). `e2e/COVERAGE.md` maps features to tests; keep it current.
-- Fleet: `fleet check ngnt-geiger-counter` (pytest + pip-audit; `--e2e` adds the e2e suite, `--with docs` the tour)
+- Fleet: `fleet check ngnt-geiger-counter` (ruff + pytest + pip-audit; `--e2e` adds the e2e suite, `--with docs` the tour)
 - Firmware: Arduino IDE only, no build in CI.
 
 ## Invariants

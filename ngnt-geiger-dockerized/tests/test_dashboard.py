@@ -1,6 +1,6 @@
 """Tests for the dashboard route — visibility, filtering, empty state."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from tests.testutils import queue_before_request, queue_settings
 
@@ -15,7 +15,7 @@ def _make_device(device_id='geiger_aabbcc', owner='testuser', status='online',
         'mac_address': 'AA:BB:CC:DD:EE:FF',
         'display_name': display_name,
         'status': status,
-        'last_seen': last_seen or datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+        'last_seen': last_seen or datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S'),
         'cpm_factor': None,
         'alert_threshold': alert_threshold,
         'provisioned': True,

@@ -78,7 +78,7 @@ async def batch_writer(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
                 batch = []
                 db_backoff = 1
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if batch:
                 await flush(pool, batch)
                 batch = []
