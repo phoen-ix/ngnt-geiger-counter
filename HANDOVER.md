@@ -215,7 +215,7 @@ Single-file Flask app with all routes. Key components:
 
 **Rate limiting:** Flask-Limiter protects auth endpoints — login (10/min), register (5/min), forgot-password (5/min). Uses in-memory storage (per-worker). No default limits on other routes.
 
-**Session security (`before_request`):** On every authenticated request, queries `pw_version` and `role` from the DB. If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login. Session timeout is loaded from the `session_timeout_minutes` setting and applied via `app.permanent_session_lifetime`.
+**Session security (`before_request`):** On every authenticated request, one query reads `pw_version`, `role` and the `session_timeout_minutes` setting. A DB error is logged and the session kept (an outage logs nobody out). If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login. The session timeout is applied via `app.permanent_session_lifetime`.
 
 **Input validation:** Usernames restricted to `[a-zA-Z0-9_-]` (3-50 chars). User-controlled strings in JS contexts use `|tojson` filter to prevent XSS. Invalid `display_timezone` values fall back to UTC instead of crashing.
 
@@ -313,7 +313,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 
 - **`MockCursor` position advances on `fetchone()`/`fetchall()`, NOT on `execute()`** — this means INSERT/UPDATE/DELETE queries that don't fetch don't consume a response slot. Responses are queued with `add_response(fetchone=...)` or `add_response(fetchall=...)`.
 - **Bootstrap isolation** — `app.py` calls `bootstrap_with_retry()` (`migrate_schema()` + `bootstrap_admin()`) at import time. The session-scoped `app_instance` fixture patches `helpers.get_db` before importing `app` to prevent real DB connections.
-- **`before_request` overhead** — every authenticated request triggers 2 DB queries (user lookup + session timeout). The `queue_before_request(cursor)` helper queues these; every test with a logged-in session must call it.
+- **`before_request` overhead** — every authenticated request makes 1 DB query (user + session timeout setting). The `queue_before_request(cursor)` helper queues it; every test with a logged-in session must call it.
 - **`follow_redirects=True` quirk** — when a POST redirects to a GET, `before_request` fires twice (once per request). Tests using `follow_redirects=True` must queue responses for both the POST and the redirected GET.
 - **CSRF/rate limiting** — disabled globally via `WTF_CSRF_ENABLED=False` and `RATELIMIT_ENABLED=False`. Dedicated tests in `test_middleware.py` re-enable them to verify they work.
 

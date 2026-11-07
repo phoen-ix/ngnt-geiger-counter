@@ -17,8 +17,6 @@ def test_before_request_user_deleted_clears_session(client, mock_cursor):
 
     # before_request: user lookup returns None
     mock_cursor.add_response(fetchone=None)
-    # before_request: session_timeout query still executes
-    mock_cursor.add_response(fetchone={'value': '1440'})
     # Dashboard (anonymous now): get_settings + devices query
     queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])  # no devices
@@ -40,8 +38,7 @@ def test_before_request_pw_version_mismatch(client, mock_cursor):
         sess['pw_version'] = 0  # old version
 
     # before_request: DB returns pw_version=1 (changed)
-    mock_cursor.add_response(fetchone={'pw_version': 1, 'role': 'user'})
-    mock_cursor.add_response(fetchone={'value': '1440'})
+    mock_cursor.add_response(fetchone={'pw_version': 1, 'role': 'user', 'session_timeout': '1440'})
     # Dashboard (anonymous after clear): get_settings + devices query
     queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
@@ -63,8 +60,7 @@ def test_before_request_role_refreshed(client, mock_cursor):
         sess['pw_version'] = 0
 
     # before_request: DB returns role='admin' (promoted)
-    mock_cursor.add_response(fetchone={'pw_version': 0, 'role': 'admin'})
-    mock_cursor.add_response(fetchone={'value': '1440'})
+    mock_cursor.add_response(fetchone={'pw_version': 0, 'role': 'admin', 'session_timeout': '1440'})
     # Dashboard (now admin): get_settings + all devices query
     queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
@@ -87,8 +83,7 @@ def test_before_request_session_timeout(client, mock_cursor, app_instance):
         sess['pw_version'] = 0
 
     # before_request: DB returns timeout=30 minutes
-    mock_cursor.add_response(fetchone={'pw_version': 0, 'role': 'user'})
-    mock_cursor.add_response(fetchone={'value': '30'})
+    mock_cursor.add_response(fetchone={'pw_version': 0, 'role': 'user', 'session_timeout': '30'})
     # Dashboard: get_settings + devices
     queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
@@ -99,8 +94,8 @@ def test_before_request_session_timeout(client, mock_cursor, app_instance):
 
 # ── before_request: DB error swallowed ──────────────────────────────────────
 
-def test_before_request_db_error_clears_session(client, mock_cursor, app_instance):
-    """If DB fails in before_request, session is cleared and error is logged."""
+def test_before_request_db_error_keeps_session(client, mock_cursor, app_instance):
+    """A DB error in before_request is logged and logs nobody out."""
     with client.session_transaction() as sess:
         sess['user_id'] = 1
         sess['username'] = 'testuser'
@@ -114,11 +109,11 @@ def test_before_request_db_error_clears_session(client, mock_cursor, app_instanc
     try:
         with patch('app.get_db', side_effect=Exception('DB down')):
             resp = client.get('/')
-            # before_request catches its error and clears session, but the
-            # route also needs DB and will fail → 500 is expected
-            assert resp.status_code in (200, 500)
+            # before_request catches its error, but the route also needs
+            # the DB and fails: 500
+            assert resp.status_code == 500
         with client.session_transaction() as sess:
-            assert 'user_id' not in sess
+            assert sess['user_id'] == 1
     finally:
         app_instance.config['PROPAGATE_EXCEPTIONS'] = True
 

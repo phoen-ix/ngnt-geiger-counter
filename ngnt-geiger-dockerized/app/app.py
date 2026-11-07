@@ -45,28 +45,29 @@ def refresh_session():
         db = get_db()
         try:
             with db.cursor() as cur:
-                cur.execute("SELECT pw_version, role FROM users WHERE id = %s",
-                            (session['user_id'],))
+                # One round trip: the user and the session timeout setting.
+                cur.execute(
+                    "SELECT pw_version, role, (SELECT `value` FROM settings "
+                    "WHERE `key` = 'session_timeout_minutes') AS session_timeout "
+                    "FROM users WHERE id = %s",
+                    (session['user_id'],))
                 user = cur.fetchone()
-                # Apply session timeout from settings
-                cur.execute("SELECT `value` FROM settings WHERE `key` = 'session_timeout_minutes'")
-                row = cur.fetchone()
-                timeout = int(row['value']) if row else 1440
         finally:
             db.close()
-        if not user:
-            session.clear()
-            return
-        if 'pw_version' in session and user['pw_version'] != session['pw_version']:
-            session.clear()
-            return
-        session['role'] = user['role']
-        session['pw_version'] = user['pw_version']
-        session.permanent = True
-        app.permanent_session_lifetime = timedelta(minutes=timeout)
     except Exception:
-        logger.exception('refresh_session: DB check failed, clearing session')
+        # A DB hiccup is no reason to log everyone out: keep the session as it is.
+        logger.exception('refresh_session: DB check failed, keeping the session')
+        return
+    if not user:
         session.clear()
+        return
+    if 'pw_version' in session and user['pw_version'] != session['pw_version']:
+        session.clear()
+        return
+    session['role'] = user['role']
+    session['pw_version'] = user['pw_version']
+    session.permanent = True
+    app.permanent_session_lifetime = timedelta(minutes=int(user['session_timeout'] or 1440))
 
 
 # ── Admin bootstrap ─────────────────────────────────────────────────────────

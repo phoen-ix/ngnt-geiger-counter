@@ -85,9 +85,8 @@ def make_settings_response(**overrides):
 
 
 def queue_before_request(cursor, role='user', pw_version=0):
-    """Queue the 2 DB calls that before_request makes for authenticated requests."""
-    cursor.add_response(fetchone={'pw_version': pw_version, 'role': role})
-    cursor.add_response(fetchone={'value': '1440'})
+    """Queue the one DB call that before_request makes for authenticated requests."""
+    cursor.add_response(fetchone={'pw_version': pw_version, 'role': role, 'session_timeout': '1440'})
 
 
 def queue_settings(cursor, **overrides):
