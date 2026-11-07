@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-10-31 (v3.5 — hashed device passwords in devices.conf, device ID from the MQTT topic, settings validation, phone layout, e2e suite)
+Last updated: 2026-11-07 (v3.5; since then: no device passwords in the database, user and admin guides in `docs/`, reset mail headers and the EHLO name as an admin setting, a DB error no longer logs everyone out, ruff in CI)
 
 ---
 
@@ -27,7 +27,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Admin page | Done | Global settings, SMTP config, user management |
 | Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
 | Password reset | Done | Token-based, email via SMTP |
-| Test suite | Done | pytest, mocked DB, no external deps |
+| Test suite | Done | pytest, mocked DB, no external deps; ruff lint (`ruff.toml`) in CI |
 | E2E suite | Done | Playwright in `ngnt-geiger-dockerized/e2e/tests/` against the whole stack (+ Mailpit), `scripts/e2e.sh`; `e2e/COVERAGE.md` |
 | Docs screenshot tour | Done | Playwright in `ngnt-geiger-dockerized/e2e/docs/`, run by `ngnt-geiger-dockerized/scripts/docs-screenshots.sh` (README "Screenshots") |
 | MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain) |
