@@ -71,7 +71,7 @@
                 <td>{{ dev['last_seen'] or '&mdash;'|safe }}</td>
                 <td>{{ 'Yes' if dev['provisioned'] else 'Pending' }}</td>
                 <td>
-                    <form method="post" onsubmit="return confirm('Delete this device? This will also remove it from Mosquitto.');">
+                    <form method="post" data-confirm="Delete this device? This will also remove it from Mosquitto.">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="delete_device">
                         <input type="hidden" name="device_db_id" value="{{ dev['id'] }}">

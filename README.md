@@ -332,6 +332,7 @@ Design, schema and decisions: [HANDOVER.md](HANDOVER.md).
 - **Pepper**: stored in plaintext in the database, because the server needs it to derive credentials. Anyone who can read the database can derive every device's MQTT password from its MAC and the owner's pepper.
 - **Initial admin password**: written only to `data/admin_initial_password.txt` (mode 0600), never to the logs.
 - **Flask secret key**: `FLASK_SECRET_KEY` is mandatory; the app refuses to start without it.
+- **Content-Security-Policy**: every page allows scripts and styles from the app itself only; nothing runs inline and nothing is loaded from another site (Chart.js is served by the app).
 - **Containers**: every service runs with `no-new-privileges` and without Linux capabilities, except the few the MariaDB and Mosquitto entrypoints need (listed with their reasons in `docker-compose.yml`), and with memory and process limits. The web app and the subscriber run as unprivileged users on a read-only root filesystem.
 - **DB connection pooling**: Flask uses `DBUtils.PooledDB` to recycle MariaDB connections instead of opening one per request.
 - **Mosquitto logging**: `warning` level. Switch to `debug` in `config/mosquitto/conf.d/mosquitto_addons.conf` only when troubleshooting.

@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-11-07 (v3.5; since then: no device passwords in the database, user and admin guides in `docs/`, reset mail headers and the EHLO name as an admin setting, a DB error no longer logs everyone out, ruff in CI)
+Last updated: 2026-11-14 (v3.5; since then: no device passwords in the database, user and admin guides in `docs/`, reset mail headers and the EHLO name as an admin setting, a DB error no longer logs everyone out, ruff in CI, containers without capabilities and the web app as uid 1000, a Content-Security-Policy with Chart.js served by the app)
 
 ---
 
@@ -265,7 +265,7 @@ Single-file Flask app with all routes. Key components:
 Jinja2 templates; every page extends `base.html`:
 - `base.html` — skeleton with nav (conditional on auth state), flash messages
 - `login.html`, `register.html`, `forgot_password.html`, `reset_password.html` — auth forms
-- `dashboard.html` — range bar, device dropdown, cards, Chart.js chart, measurements table
+- `dashboard.html` — range bar, device dropdown, cards, Chart.js chart, measurements table (the chart's code is `static/dashboard.js`, Chart.js itself `static/chart.umd.js`; no inline script anywhere, see the Content-Security-Policy in `app.py`)
 - `devices.html` — device list + add form
 - `account.html` — profile + change password
 - `admin.html` — global settings (incl. base URL), SMTP settings, user management table

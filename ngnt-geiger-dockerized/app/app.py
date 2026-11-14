@@ -42,6 +42,28 @@ def inject_site_name():
     return {'site_name': SITE_NAME}
 
 
+# Everything a page loads comes from this app: no inline script (handlers live in
+# static/app.js, the chart in static/dashboard.js, Chart.js itself in static/), no
+# other origin. style="" attributes are allowed, <style> elements are not.
+CONTENT_SECURITY_POLICY = '; '.join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "style-src-attr 'unsafe-inline'",
+    "img-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
+@app.after_request
+def content_security_policy(response):
+    response.headers.setdefault('Content-Security-Policy', CONTENT_SECURITY_POLICY)
+    return response
+
+
 @app.before_request
 def refresh_session():
     """Verify logged-in user still exists, password hasn't changed, and refresh role."""

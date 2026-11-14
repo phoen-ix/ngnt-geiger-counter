@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process'
 import { createHmac, pbkdf2Sync, randomBytes } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -183,25 +182,22 @@ export async function mailTo(to: string): Promise<string> {
   return (await (await fetch(`${MAIL}/api/v1/message/${id}`)).json()).Text
 }
 
-// dashboard.html loads Chart.js from jsDelivr; serve the same release from
-// node_modules (package.json pins it to the template's version).
-const CHART_DIR = fileURLToPath(new URL('../node_modules/chart.js/', import.meta.url))
-const CHART_VERSION = JSON.parse(readFileSync(path.join(CHART_DIR, 'package.json'), 'utf8')).version
-const CHART_URL = `https://cdn.jsdelivr.net/npm/chart.js@${CHART_VERSION}/dist/chart.umd.min.js`
 const ORIGIN = new URL(BASE).origin
 
-/** Fails the test on an uncaught page error, a 5xx, or a request leaving the stack. */
+/** Fails the test on an uncaught page error, a 5xx, a request leaving the stack (the app
+ * serves everything itself, Chart.js included), or anything the Content-Security-Policy
+ * refused (the browser reports that on the console). */
 async function guard(ctx: BrowserContext, problems: string[]) {
   ctx.on('weberror', (e) => problems.push(`page error: ${e.error().message}`))
+  ctx.on('console', (m) => {
+    if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) problems.push(`csp: ${m.text()}`)
+  })
   ctx.on('response', (r) => {
     if (r.status() >= 500) problems.push(`${r.status()} ${r.request().method()} ${r.url()}`)
   })
   await ctx.route(
     (url) => url.origin !== ORIGIN,
     (route) => {
-      if (route.request().url() === CHART_URL) {
-        return route.fulfill({ path: path.join(CHART_DIR, 'dist/chart.umd.js'), contentType: 'text/javascript' })
-      }
       problems.push(`unexpected request: ${route.request().url()}`)
       return route.abort()
     },

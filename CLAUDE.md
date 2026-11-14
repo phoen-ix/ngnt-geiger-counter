@@ -35,8 +35,11 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
 - Every new form needs the hidden `csrf_token` field (Flask-WTF `CSRFProtect` checks every POST).
 - Tests: `MockCursor` advances on `fetchone()`/`fetchall()`, not on `execute()`; every logged-in request needs
   `queue_before_request(cursor)` (twice with `follow_redirects=True`). Details in HANDOVER.md.
-- `dashboard.html` loads Chart.js 4.4.0 from jsDelivr; `e2e/package.json` pins the same version for the tour's
-  offline copy. Bump both together.
+- Every response carries a Content-Security-Policy (`app.py`, `after_request`): scripts and styles from the
+  app only, no inline script. Page behaviour lives in `app/static/` (`app.js`: `data-confirm` forms and
+  `data-autosubmit` selects; `dashboard.js`: the chart, fed by the `#chart-data` JSON block), and Chart.js 4.4.0 is
+  vendored there as `chart.umd.js` (the npm package's `dist/chart.umd.js`). Never add an inline `<script>`, an
+  `on…=` attribute or a third-party URL to a template: `tests/test_csp.py` and the e2e guard fail on it.
 - E2E: every test owns its users/devices (`uid()`, SQL in `e2e/tests/support.ts`; the dashboard's device filter
   only renders with two visible counters, so a test that reads it creates both); every sign-in goes through
   `signIn()`/`submitForm()`, which wait out the login/register/forgot-password rate limits (one IP for the whole

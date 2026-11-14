@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -19,11 +18,6 @@ const OUT = path.resolve(
   process.env.DOCS_SCREENSHOT_DIR ?? fileURLToPath(new URL('../../../docs/screenshots', import.meta.url)),
 )
 
-// dashboard.html loads Chart.js from jsDelivr; serve the same release from
-// node_modules instead (package.json pins it to the template's version).
-const CHART_DIR = fileURLToPath(new URL('../node_modules/chart.js/', import.meta.url))
-const CHART_VERSION = JSON.parse(readFileSync(path.join(CHART_DIR, 'package.json'), 'utf8')).version
-const CHART_URL = `https://cdn.jsdelivr.net/npm/chart.js@${CHART_VERSION}/dist/chart.umd.min.js`
 const ORIGIN = new URL(BASE).origin
 
 // Seeded by ./global-setup.ts.
@@ -42,7 +36,7 @@ test.afterEach(async () => {
   expect(pageErrors).toEqual([])
 })
 
-/** Only the stack and the local Chart.js copy, anything else fails the test;
+/** Only the stack (the app serves Chart.js itself), anything else fails the test;
  * and Chart.js without animations, so the chart is drawn in its final state
  * at once (`reducedMotion` does not reach a canvas). */
 async function prepare(ctx: BrowserContext): Promise<void> {
@@ -60,9 +54,6 @@ async function prepare(ctx: BrowserContext): Promise<void> {
   await ctx.route(
     (url) => url.origin !== ORIGIN,
     (route) => {
-      if (route.request().url() === CHART_URL) {
-        return route.fulfill({ path: path.join(CHART_DIR, 'dist/chart.umd.js'), contentType: 'text/javascript' })
-      }
       pageErrors.push(`unexpected request: ${route.request().url()}`)
       return route.abort()
     },
