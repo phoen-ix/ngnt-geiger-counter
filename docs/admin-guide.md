@@ -149,10 +149,12 @@ Registered counters keep working: their login is derived from MAC + pepper as be
 The web app's container runs as uid 1000 and without Linux capabilities. What the old root container wrote belongs to root, so hand it over once after pulling, before the `up`:
 
 ```bash
-sudo chown -R 1000:1000 data config/mosquitto/devices.conf
+sudo chown -R 1000:1000 data
+# only if a counter was ever registered (the file exists):
+sudo chown 1000:1000 config/mosquitto/devices.conf
 ```
 
-Without it the app cannot register or remove a counter (`devices.conf`) or delete the initial-password file. `config/mosquitto/passwd.txt` stays root's: the Mosquitto entrypoint rebuilds it.
+Without it the admin's next password change ends in an error page (the initial-password file in `data/` cannot be deleted; the new password is set all the same), and no counter can be registered or removed (`devices.conf`). `config/mosquitto/passwd.txt` stays root's: the Mosquitto entrypoint rebuilds it.
 
 ### Leftovers in `app/` (from v3.4 or earlier)
 
