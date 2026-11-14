@@ -5,6 +5,16 @@ services:
             dockerfile: ./Dockerfiles/DockerfileFlask
         container_name: ngnt-geiger-flask
         restart: unless-stopped
+        # Runs as uid 1000 (DockerfileFlask) and needs no capability. Its writes are
+        # data/, config/mosquitto/ (both mounted below) and gunicorn's worker
+        # heartbeat files in /tmp.
+        security_opt: ["no-new-privileges:true"]
+        cap_drop: [ALL]
+        read_only: true
+        tmpfs:
+            - /tmp:size=16m
+        pids_limit: 64
+        mem_limit: 256m
         ports:
             - ${FLASK_PORTS}
         environment:
@@ -33,6 +43,18 @@ services:
         image: mariadb:${DOCKER_IMAGE_MARIADB_TAG}
         container_name: ngnt-geiger-mariadb
         restart: unless-stopped
+        # The entrypoint starts as root, chowns the data directory and drops to mysql
+        # (uid 999) with gosu. That needs four capabilities; the rest is gone.
+        security_opt: ["no-new-privileges:true"]
+        cap_drop: [ALL]
+        cap_add:
+            - CHOWN            # chown of the data directory
+            - DAC_READ_SEARCH  # root walks a directory it does not own
+            - SETGID           # gosu: drop to mysql
+            - SETUID
+        # Threads count as pids: max_connections (151) plus InnoDB's background threads fit.
+        pids_limit: 512
+        mem_limit: 1g
         expose:
             - 3306
         environment:
@@ -59,6 +81,18 @@ services:
             dockerfile: ./Dockerfiles/DockerfileMosquitto
         container_name: ngnt-geiger-mosquitto
         restart: unless-stopped
+        # scripts/mosquitto/docker-entrypoint.sh runs as root next to the broker (uid 1883).
+        security_opt: ["no-new-privileges:true"]
+        cap_drop: [ALL]
+        cap_add:
+            - CHOWN         # certificates, data/ and log/ go to mosquitto; passwd.txt to root
+            - DAC_OVERRIDE  # passwd.txt and .reload live in config/mosquitto, which belongs to uid 1000
+            - FOWNER        # chmod 600 of the keys after they went to mosquitto
+            - KILL          # the reload watcher signals the broker, which runs as uid 1883
+            - SETGID        # the broker drops from root to mosquitto
+            - SETUID
+        pids_limit: 64
+        mem_limit: 128m
         ports:
             - ${MOSQUITTO_PORTS}
             - ${MOSQUITTO_PORTS_TLS}
@@ -85,6 +119,12 @@ services:
             dockerfile: ./Dockerfiles/DockerfileSubscriber
         container_name: ngnt-geiger-subscriber
         restart: unless-stopped
+        # Runs as its own unprivileged user and writes nothing.
+        security_opt: ["no-new-privileges:true"]
+        cap_drop: [ALL]
+        read_only: true
+        pids_limit: 64
+        mem_limit: 128m
         environment:
           MARIADB_DATABASE: ${MARIADB_DATABASE}
           MARIADB_USER: ${MARIADB_USER}

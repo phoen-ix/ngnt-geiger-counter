@@ -295,7 +295,7 @@ Enhanced from v2.0:
 
 ### `Dockerfiles/DockerfileFlask`
 
-`python:3.15.2-slim-trixie` + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, DBUtils, Gunicorn. Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker. The image holds no app code: compose mounts `app/` read-only at `/src` (the working directory) and `data/` and `config/mosquitto/` at `/app/data` and `/app/mosquitto-config`.
+`python:3.15.2-slim-trixie` + pip install of Flask, Flask-WTF, Flask-Limiter, PyMySQL, DBUtils, Gunicorn. Runs as an unprivileged user (uid 1000, the owner of the checkout's `data/` and `config/mosquitto/`). Runs Gunicorn with 2 workers and `--preload` on port 8000. The `--preload` flag ensures the admin bootstrap runs once in the master process instead of once per worker. The image holds no app code: compose mounts `app/` read-only at `/src` (the working directory) and `data/` and `config/mosquitto/` at `/app/data` and `/app/mosquitto-config`.
 
 ### `Dockerfiles/DockerfileMosquitto`
 

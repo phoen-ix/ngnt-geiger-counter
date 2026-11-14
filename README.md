@@ -145,9 +145,11 @@ const char* lcdDateTimeFmt  = "d.m.y    H:i:s"; // date+time format on the LCD
 git clone https://github.com/phoen-ix/ngnt-geiger-counter.git
 cd ngnt-geiger-counter/ngnt-geiger-dockerized
 
-cp .env.example .env
+install -m 600 .env.example .env   # .env holds secrets: readable by you only
 # Edit .env — change all passwords, FLASK_SECRET_KEY, and SITE_NAME before proceeding
 ```
+
+The web app runs as uid 1000 and writes to `data/` and `config/mosquitto/`. After a clone both belong to you; if your uid is not 1000 (`id -u`), hand them over: `sudo chown -R 1000:1000 data config/mosquitto`.
 
 **2. Start the stack**
 ```bash
@@ -160,7 +162,7 @@ On first start:
 
 **3. Get the admin password**
 ```bash
-# the file belongs to root, mode 0600
+# the file belongs to uid 1000 (the web app's user), mode 0600
 docker compose exec ngnt-geiger-flask cat /app/data/admin_initial_password.txt
 ```
 
@@ -330,6 +332,7 @@ Design, schema and decisions: [HANDOVER.md](HANDOVER.md).
 - **Pepper**: stored in plaintext in the database, because the server needs it to derive credentials. Anyone who can read the database can derive every device's MQTT password from its MAC and the owner's pepper.
 - **Initial admin password**: written only to `data/admin_initial_password.txt` (mode 0600), never to the logs.
 - **Flask secret key**: `FLASK_SECRET_KEY` is mandatory; the app refuses to start without it.
+- **Containers**: every service runs with `no-new-privileges` and without Linux capabilities, except the few the MariaDB and Mosquitto entrypoints need (listed with their reasons in `docker-compose.yml`), and with memory and process limits. The web app and the subscriber run as unprivileged users on a read-only root filesystem.
 - **DB connection pooling**: Flask uses `DBUtils.PooledDB` to recycle MariaDB connections instead of opening one per request.
 - **Mosquitto logging**: `warning` level. Switch to `debug` in `config/mosquitto/conf.d/mosquitto_addons.conf` only when troubleshooting.
 

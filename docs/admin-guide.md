@@ -22,7 +22,7 @@ The role is read from the database on every request, so a role change applies at
 
 ## First sign-in
 
-On its first start the stack creates the user `admin` with a random password and writes it only to `data/admin_initial_password.txt` (owned by root, mode 0600), never to the logs.
+On its first start the stack creates the user `admin` with a random password and writes it only to `data/admin_initial_password.txt` (owned by uid 1000, the web app's user; mode 0600), never to the logs.
 
 1. Read the password ([README, step 3](../README.md#server-quick-start)): `docker compose exec ngnt-geiger-flask cat /app/data/admin_initial_password.txt`
 2. Open `http://<your-server>:1880`, click **Login** and sign in as `admin`.
@@ -144,6 +144,16 @@ On its next start Flask removes the device passwords older versions kept:
 
 Registered counters keep working: their login is derived from MAC + pepper as before.
 
+### The web app no longer runs as root (from v3.5 or earlier)
+
+The web app's container runs as uid 1000 and without Linux capabilities. What the old root container wrote belongs to root, so hand it over once after pulling, before the `up`:
+
+```bash
+sudo chown -R 1000:1000 data config/mosquitto/devices.conf
+```
+
+Without it the app cannot register or remove a counter (`devices.conf`) or delete the initial-password file. `config/mosquitto/passwd.txt` stays root's: the Mosquitto entrypoint rebuilds it.
+
 ### Leftovers in `app/` (from v3.4 or earlier)
 
 Older versions mounted `app/` read-write at `/app` with `data/` and `config/mosquitto/` nested inside. Docker left root-owned `app/data/`, `app/mosquitto-config/` (empty mount points) and `app/__pycache__/` in the checkout. The app is now mounted read-only at `/src`. After pulling, recreate the container and remove them once:
@@ -155,11 +165,11 @@ sudo rm -rf app/data app/mosquitto-config app/__pycache__
 
 ## Reset
 
-Wipes all users, counters, readings and device logins and starts like a new install (a new `admin` password in `data/`). The containers write these files as root and the MariaDB user, hence `sudo`:
+Wipes all users, counters, readings and device logins and starts like a new install (a new `admin` password in `data/`). The containers write these files as root, uid 1000 and the MariaDB user, hence `sudo`. `data/` itself stays (the web app, uid 1000, could not write into a directory Docker creates anew as root):
 
 ```bash
 docker compose down
-sudo rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/ config/mosquitto/devices.conf
+sudo rm -rf volumes/mariadb/* volumes/mosquitto/data/* volumes/mosquitto/certs/* data/* config/mosquitto/devices.conf
 docker compose up -d
 ```
 

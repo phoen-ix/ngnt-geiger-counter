@@ -27,6 +27,11 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
 - The Flask image holds only the dependencies; the app is `app/`, mounted read-only at `/src`. Keep it outside
   `/app`, where `data/` and the Mosquitto config dir are mounted: mounts nested in a bind-mounted `app/` leave
   root-owned dirs in the checkout. Gunicorn runs with `--preload` so the admin bootstrap happens once.
+- Every service has `no-new-privileges`, `cap_drop: [ALL]` and pid and memory limits. Flask runs as uid 1000
+  (`DockerfileFlask`) on a read-only root filesystem: `data/` and `config/mosquitto/` must belong to uid 1000
+  (`data/.gitkeep` keeps the directory in the checkout so Docker never creates it as root). MariaDB and
+  Mosquitto add back only what their entrypoints need; each `cap_add` line in `docker-compose.yml` says what
+  for. A new step in `scripts/mosquitto/docker-entrypoint.sh` may need a capability: run the e2e suite.
 - Every new form needs the hidden `csrf_token` field (Flask-WTF `CSRFProtect` checks every POST).
 - Tests: `MockCursor` advances on `fetchone()`/`fetchall()`, not on `execute()`; every logged-in request needs
   `queue_before_request(cursor)` (twice with `follow_redirects=True`). Details in HANDOVER.md.

@@ -52,7 +52,16 @@ services:
         ports: !override
             - 127.0.0.1:${E2E_MQTT_PORT:-1888}:8883
         volumes: !override
-            - mosquitto-config:/mosquitto/config
+            # nocopy, and started after Flask (depends_on below): the image's
+            # /mosquitto/config belongs to mosquitto's uid 1883 and must not be copied
+            # into the fresh volume. Flask's container creates it first, owned by its
+            # uid 1000 like the image's /app/mosquitto-config, so it can write
+            # devices.conf and .reload there.
+            - type: volume
+              source: mosquitto-config
+              target: /mosquitto/config
+              volume:
+                  nocopy: true
             - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
             - ./config/mosquitto/acls:/mosquitto/config/acls:ro
             - ./config/mosquitto/conf.d:/mosquitto/config/conf.d:ro
@@ -60,6 +69,9 @@ services:
             - mosquitto-data:/mosquitto/data
             - mosquitto-certs:/mosquitto/certs
             - ./scripts/mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+        depends_on:
+            ngnt-geiger-flask:
+                condition: service_healthy
         healthcheck:
             # The TLS listener is up and the subscriber's account works.
             test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 8883 --cafile /mosquitto/certs/ca.crt --insecure -u \"$$MQTT_PYTHON_USER\" -P \"$$MQTT_PYTHON_USERPW\" -t /healthcheck -n"]

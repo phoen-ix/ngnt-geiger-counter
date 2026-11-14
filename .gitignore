@@ -11,7 +11,8 @@ ngnt-geiger-dockerized/config/mosquitto/passwd.txt
 ngnt-geiger-dockerized/config/mosquitto/.reload
 
 # ── Runtime data ─────────────────────────────────────────────────────────────
-ngnt-geiger-dockerized/data/
+ngnt-geiger-dockerized/data/*
+!ngnt-geiger-dockerized/data/.gitkeep
 ngnt-geiger-dockerized/volumes/mariadb/*
 !ngnt-geiger-dockerized/volumes/mariadb/.gitkeep
 
