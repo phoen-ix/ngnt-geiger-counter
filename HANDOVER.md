@@ -299,7 +299,7 @@ Enhanced from v2.0:
 
 ### `Dockerfiles/DockerfileMosquitto`
 
-Added in v3.2. Extends `eclipse-mosquitto:2.1.2-alpine` with `openssl` (needed by entrypoint for cert generation).
+Added in v3.2. Extends `eclipse-mosquitto:2.1.4-alpine` with `openssl` (needed by entrypoint for cert generation).
 
 ### `Dockerfiles/DockerfileSubscriber`
 
@@ -355,7 +355,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 | Image | Version |
 |-------|---------|
 | `mariadb` | 12.3.3 |
-| `eclipse-mosquitto` | 2.1.2-alpine |
+| `eclipse-mosquitto` | 2.1.4-alpine |
 | `python` (Flask) | 3.15.2-slim-trixie |
 | `python` (subscriber) | 3.15.2-slim-trixie |
 

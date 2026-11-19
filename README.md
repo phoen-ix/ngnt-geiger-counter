@@ -224,7 +224,7 @@ Who sees which counters, what to back up, upgrading (MariaDB, older versions) an
 | Container | Image / Dockerfile | Exposes | Role |
 |-----------|-------------------|---------|------|
 | `ngnt-geiger-mariadb` | `mariadb:12.3.3` | 3306 (internal) | Persistent storage |
-| `ngnt-geiger-mosquitto` | `DockerfileMosquitto` (`eclipse-mosquitto:2.1.2-alpine` + openssl) | 8883 (TLS), 2883 -> 1883 (plain) | MQTT broker with TLS + auto-reload |
+| `ngnt-geiger-mosquitto` | `DockerfileMosquitto` (`eclipse-mosquitto:2.1.4-alpine` + openssl) | 8883 (TLS), 2883 -> 1883 (plain) | MQTT broker with TLS + auto-reload |
 | `ngnt-geiger-subscriber` | `DockerfileSubscriber` (`python:3.15.2-slim-trixie`) | — | Async MQTT subscriber -> DB |
 | `ngnt-geiger-flask` | `DockerfileFlask` (`python:3.15.2-slim-trixie`) | 1880 -> 8000 | Flask web dashboard + user management |
 
