@@ -1,4 +1,6 @@
-import { createUser, expect, flash, mqttCredentials, mqttPublish, q, randomMac, signIn, sql, test } from './support'
+import {
+  createUser, expect, flash, mqttCredentials, mqttListen, mqttPublish, q, randomMac, signIn, sql, test,
+} from './support'
 
 /* The whole pipeline a Geiger counter goes through: registered in the web UI,
  * Flask writes devices.conf and the reload flag, Mosquitto's entrypoint picks
@@ -19,9 +21,9 @@ test('register, connect, measure, go offline, delete', async ({ open }) => {
   await page.getByRole('button', { name: 'Register Device' }).click()
   await expect(flash(page)).toHaveText(`Device ${id} registered and provisioned.`)
 
-  // Wrong password: refused. Right one: accepted once Mosquitto reloaded.
-  expect(mqttPublish(id, 'wrong-password', { id, status: 'connected' }).out).toContain('not authorised')
+  // Accepted once Mosquitto reloaded; then, as a known login, a wrong password is refused.
   await expect.poll(() => mqttPublish(id, password, { id, status: 'connected' }).ok, { message: 'provisioned in Mosquitto' }).toBe(true)
+  expect(mqttPublish(id, 'wrong-password', { id, status: 'connected' }).out).toContain('not authorised')
   const row = page.getByRole('row').filter({ hasText: id })
   await expect.poll(async () => (await page.reload(), (await row.getByRole('cell').nth(3).textContent())?.trim())).toBe('online')
   await expect(row.getByRole('cell').nth(4)).not.toHaveText('—')
@@ -85,9 +87,36 @@ test('malformed messages are skipped and the next reading is stored', async ({ o
   await expect(flash(page)).toHaveText(`Device ${dev.id} registered and provisioned.`)
   await expect.poll(() => mqttPublish(dev.id, dev.password, { id: dev.id, status: 'connected' }).ok).toBe(true)
 
-  for (const bad of ['not json', '[1, 2]', JSON.stringify({ id: dev.id, cpm: 5 }), JSON.stringify({ id: dev.id, ts: utcNow(), usvh: 0.1 })]) {
+  for (const bad of [
+    'not json', '[1, 2]', JSON.stringify({ id: dev.id, cpm: 5 }), JSON.stringify({ id: dev.id, ts: utcNow(), usvh: 0.1 }),
+    // A wrong type used to end the subscriber.
+    JSON.stringify({ id: dev.id, ts: utcNow(), cpm: 'x', usvh: 0.1 }),
+  ]) {
     expect(mqttPublish(dev.id, dev.password, bad).ok).toBe(true)
   }
   expect(mqttPublish(dev.id, dev.password, { id: dev.id, ts: utcNow(), cpm: 14, usvh: 0.0798 }).ok).toBe(true)
   await expect.poll(() => sql(`SELECT GROUP_CONCAT(cpm) FROM measurements WHERE device_id = ${q(dev.id)};`)).toBe('14')
+})
+
+test("a counter can neither publish on another counter's topic nor read the others' readings", async ({ open }) => {
+  const user = createUser()
+  const page = await open(await signIn(user.username))
+  const [a, b] = [randomMac(), randomMac()].map((mac) => ({ mac, ...mqttCredentials(mac, user.pepper!) }))
+  for (const dev of [a, b]) {
+    await page.goto('/devices')
+    await page.getByLabel('MAC Address').fill(dev.mac)
+    await page.getByRole('button', { name: 'Register Device' }).click()
+    await expect(flash(page)).toHaveText(`Device ${dev.id} registered and provisioned.`)
+  }
+  await expect.poll(() => mqttPublish(b.id, b.password, { id: b.id, status: 'connected' }).ok).toBe(true)
+
+  // Counter A listens to every counter's topic while it writes on B's, and B on its own.
+  const heard = await mqttListen(a.id, a.password, '/+/impulses', () => {
+    // The broker drops what the ACL refuses without telling the sender.
+    expect(mqttPublish(a.id, a.password, { id: b.id, ts: utcNow(), cpm: 9999, usvh: 56.9943 }, `/${b.id}/impulses`).ok).toBe(true)
+    expect(mqttPublish(b.id, b.password, { id: b.id, ts: utcNow(), cpm: 12, usvh: 0.0684 }).ok).toBe(true)
+  })
+  // The subscriber, which may read every topic, stored B's reading and nothing from A.
+  await expect.poll(() => sql(`SELECT GROUP_CONCAT(cpm) FROM measurements WHERE device_id = ${q(b.id)};`)).toBe('12')
+  expect(heard).not.toContain('received PUBLISH')
 })

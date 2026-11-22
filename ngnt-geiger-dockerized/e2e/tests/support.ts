@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { createHmac, pbkdf2Sync, randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -144,13 +145,15 @@ export async function signIn(username: string, password = PASSWORD) {
 
 export type State = Awaited<ReturnType<typeof signIn>>
 
-/** Publishes like a Geiger counter: over Mosquitto's TLS listener, as `user`.
- * Several payloads go out back to back on one connection, as the firmware
- * sends "connected" and its pending reading after a reconnect. */
+/** Publishes like a Geiger counter: over Mosquitto's TLS listener, as `user`,
+ * on its own topic unless `topic` names another. Several payloads go out back
+ * to back on one connection, as the firmware sends "connected" and its pending
+ * reading after a reconnect. */
 export function mqttPublish(
   user: string,
   password: string,
   payload: object | string | (object | string)[],
+  topic = `/${user}/impulses`,
 ): { ok: boolean; out: string } {
   const lines = (Array.isArray(payload) ? payload : [payload]).map((p) => (typeof p === 'string' ? p : JSON.stringify(p)))
   try {
@@ -159,7 +162,7 @@ export function mqttPublish(
       [
         'exec', '-i', CONTAINER.mosquitto, 'mosquitto_pub', '-h', 'localhost', '-p', '8883',
         '--cafile', '/mosquitto/certs/ca.crt', '--insecure', '-q', '1',
-        '-u', user, '-P', password, '-t', `/${user}/impulses`, '-l',
+        '-u', user, '-P', password, '-t', topic, '-l',
       ],
       { input: lines.join('\n') + '\n', stdio: ['pipe', 'pipe', 'pipe'] },
     )
@@ -167,6 +170,24 @@ export function mqttPublish(
   } catch (e) {
     return { ok: false, out: String((e as { stderr?: Buffer }).stderr ?? e) }
   }
+}
+
+/** Subscribes to `topic` as `user` over the TLS listener, runs `meanwhile` once
+ * the broker acknowledged the subscription, and returns mosquitto_sub's debug
+ * log: a message delivered shows as "received PUBLISH". It listens 5 s in all,
+ * as there is no event for a message that must not arrive. */
+export async function mqttListen(user: string, password: string, topic: string, meanwhile: () => void): Promise<string> {
+  const sub = spawn('docker', [
+    'exec', CONTAINER.mosquitto, 'mosquitto_sub', '-h', 'localhost', '-p', '8883',
+    '--cafile', '/mosquitto/certs/ca.crt', '--insecure', '-u', user, '-P', password, '-t', topic, '-d', '-W', '5',
+  ])
+  let log = ''
+  for (const out of [sub.stdout, sub.stderr]) out.on('data', (d) => (log += d))
+  const exited = once(sub, 'exit')
+  await expect.poll(() => log, { message: 'subscribed' }).toContain('received SUBACK')
+  meanwhile()
+  await exited
+  return log
 }
 
 /** The text of the newest mail Mailpit caught for `to`, once it caught `count` of them. */

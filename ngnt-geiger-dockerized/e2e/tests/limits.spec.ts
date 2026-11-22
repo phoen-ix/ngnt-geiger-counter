@@ -16,13 +16,15 @@ for (const [path, limit, form] of [
     const api = await request.newContext({ baseURL: BASE })
     const token = /name="csrf_token" value="([^"]+)"/.exec(await (await api.get(path)).text())![1]
     const statuses: number[] = []
-    for (let i = 0; i < 4 * limit && !statuses.includes(429); i++) {
-      statuses.push((await api.post(path, { form: { csrf_token: token, ...form }, maxRedirects: 0 })).status())
+    let refused: import('@playwright/test').APIResponse | undefined
+    for (let i = 0; i < 4 * limit && !refused; i++) {
+      const res = await api.post(path, { form: { csrf_token: token, ...form }, maxRedirects: 0 })
+      statuses.push(res.status())
+      if (res.status() === 429) refused = res
     }
     // Earlier tests may have used part of this minute's allowance.
     expect(statuses).toContain(429)
-    const res = await api.post(path, { form: { csrf_token: token, ...form }, maxRedirects: 0 })
-    if (res.status() === 429) expect(await res.text()).toContain('Too Many Requests')
+    expect(await refused!.text()).toContain('Too Many Requests')
     await api.dispose()
   })
 }
