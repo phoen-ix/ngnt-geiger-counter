@@ -13,7 +13,7 @@ grep -n "flash(" app/app.py                                       # messages / e
 grep -n "elif msg.get\|if 'cpm' in msg" scripts/pm2/mqtt_bro_impulses.py   # 3 MQTT message kinds
 ```
 
-**134 items: 129 ✅, 5 ❌ (3 × (c) covered by pytest, 1 × (a) hardware, 1 × (d) waits for an owner decision).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
+**134 items: 130 ✅, 4 ❌ (3 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
 `main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`.
 
 ## Routes × roles (breadth)
@@ -144,12 +144,12 @@ no 5xx, no request leaving the stack.
 |---|---|
 | User list: username, email, role, public, device count, created (display timezone) | ✅ `admin › the user list shows email, role, visibility, device count and creation date` |
 | Own row: role locked, no delete | ✅ same |
-| Toggle role user ↔ admin | ✅ `admin › promote a user to admin and back; the role applies without signing in again` |
-| Toggle public Yes ↔ No (dashboard follows) | ✅ `admin › toggle a user public and private` |
+| Role user ↔ admin | ✅ `admin › promote a user to admin and back; the role applies without signing in again` |
+| Public Yes ↔ No (dashboard follows) | ✅ `admin › make a user public and private again` |
 | Delete user: confirm text, cancel keeps, accept deletes, devices unprovisioned in Mosquitto | ✅ `admin › delete a user after confirming: devices unprovisioned, their session ends` |
 | Malformed target user id → "Invalid request." | ✅ `admin › a malformed user id is refused` |
 | Non-admin: page and all 5 POST actions redirected to `/`, nothing changed (every guarded route as every kind of session: `tests/test_routes_access.py`) | ✅ `admin › a user cannot open or post to the admin page` |
-| Role / Public: a double click or a stale tab changes it once | ❌ (d) `repeat › a double click on a role or visibility button changes it once` is `test.fixme`: the buttons post a toggle (owner decision X1) |
+| Role / Public: the buttons post the value wanted, so a double click or a tab opened before sets it once and says when nothing changed | ✅ `repeat › a double click or a tab opened before sets a role or visibility once, and says when nothing changed` |
 | Global settings saved and shown, and saved again on the same page; CPM factor read-only | ✅ `global › settings are saved and shown again; the CPM factor is read-only` |
 | Registration open/disabled | ✅ `global › registration disabled: the register page sends people to the login page` |
 | Display timezone | ✅ `global › the display timezone applies to dashboard and devices dates` |

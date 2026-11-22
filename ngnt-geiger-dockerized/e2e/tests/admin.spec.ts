@@ -5,7 +5,7 @@ import {
   sql, test,
 } from './support'
 
-/* The admin page's user list: role and visibility toggles, deleting a user,
+/* The admin page's user list: role and visibility buttons, deleting a user,
  * the admin's own row; and that only admins get in. Site-wide settings are
  * global.spec.ts. */
 
@@ -50,7 +50,7 @@ test('promote a user to admin and back; the role applies without signing in agai
   await expect(target).toHaveURL(/\/$/)
 })
 
-test('toggle a user public and private', async ({ open }) => {
+test('make a user public and private again', async ({ open }) => {
   const user = createUser()
   const dev = createDevice(user)
   createDevice(createUser({ public: true })) // the guest's device filter needs two visible counters
@@ -112,8 +112,8 @@ test('a user cannot open or post to the admin page', async ({ open }) => {
   const api = await request.newContext({ baseURL: BASE, storageState: USER_STATE })
   const token = /name="csrf_token" value="([^"]+)"/.exec(await (await api.get('/account')).text())![1]
   for (const form of [
-    { action: 'toggle_role', target_user_id: String(victim.id) },
-    { action: 'toggle_public', target_user_id: String(victim.id) },
+    { action: 'set_role', target_user_id: String(victim.id), role: 'admin' },
+    { action: 'set_public', target_user_id: String(victim.id), public: '1' },
     { action: 'delete_user', target_user_id: String(victim.id) },
     { action: 'save_settings', registration_enabled: '0', session_timeout_minutes: '1' },
     { action: 'save_smtp', smtp_host: 'smtp.attacker.example' },
@@ -129,7 +129,7 @@ test('a user cannot open or post to the admin page', async ({ open }) => {
 
 test('a malformed user id is refused', async () => {
   const api = await request.newContext({ baseURL: BASE, storageState: ADMIN_STATE })
-  const res = await postForm(api, '/admin', { action: 'toggle_public', target_user_id: 'abc' })
+  const res = await postForm(api, '/admin', { action: 'set_public', target_user_id: 'abc', public: '1' })
   expect(await res.text()).toContain('Invalid request.')
   await api.dispose()
 })

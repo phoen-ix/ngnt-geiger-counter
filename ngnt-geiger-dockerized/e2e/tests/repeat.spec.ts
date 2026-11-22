@@ -140,18 +140,27 @@ test('the device filter after Back: it shows what the page shows, and picking ag
   await expect(page).toHaveURL(new RegExp(`device=${a.id}$`))
 })
 
-// Owner decision X1 (open): Role and Public post a toggle, so a second submit -
-// a double click, or a tab opened before the first change - flips the value
-// back while the button showed the other one. Should they post the wanted
-// value (role=admin, public=1), making a repeat a no-op?
-test.fixme('a double click on a role or visibility button changes it once', async ({ open }) => {
+test('a double click or a tab opened before sets a role or visibility once, and says when nothing changed', async ({ open }) => {
   const user = createUser()
-  const page = await open(ADMIN_STATE)
-  await page.goto('/admin')
-  const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: user.username, exact: true }) })
-  await row.getByRole('button', { name: 'user' }).dblclick()
-  await expect(flash(page)).toHaveText('Role updated.')
-  await row.getByRole('button', { name: 'No' }).dblclick()
-  await expect(flash(page)).toHaveText('Visibility updated.')
+  const row = (page: import('@playwright/test').Page) =>
+    page.getByRole('row').filter({ has: page.getByRole('cell', { name: user.username, exact: true }) })
+  const [page, staleRole, stalePublic] = [await open(ADMIN_STATE), await open(ADMIN_STATE), await open(ADMIN_STATE)]
+  for (const p of [page, staleRole, stalePublic]) await p.goto('/admin')
+
+  await row(page).getByRole('button', { name: 'user' }).dblclick()
+  await expect(row(page).getByRole('button', { name: 'admin' })).toBeVisible()
+  await expect(flash(page).first()).toHaveText(new RegExp(`^(Role updated\\.|${user.username} is already admin\\.)$`))
+  await row(page).getByRole('button', { name: 'No' }).dblclick()
+  await expect(row(page).getByRole('button', { name: 'Yes' })).toBeVisible()
+  await expect(flash(page).first()).toHaveText(new RegExp(`^(Visibility updated\\.|${user.username} is already public\\.)$`))
+  expect(sql(`SELECT role, public FROM users WHERE id = ${user.id};`)).toBe('admin\t1')
+
+  // Tabs opened before still offer the old values: asking again changes nothing, and says so.
+  await row(staleRole).getByRole('button', { name: 'user' }).click()
+  await expect(flash(staleRole)).toHaveText(`${user.username} is already admin.`)
+  await expect(row(staleRole).getByRole('button', { name: 'admin' })).toBeVisible()
+  await row(stalePublic).getByRole('button', { name: 'No' }).click()
+  await expect(flash(stalePublic)).toHaveText(`${user.username} is already public.`)
+  await expect(row(stalePublic).getByRole('button', { name: 'Yes' })).toBeVisible()
   expect(sql(`SELECT role, public FROM users WHERE id = ${user.id};`)).toBe('admin\t1')
 })

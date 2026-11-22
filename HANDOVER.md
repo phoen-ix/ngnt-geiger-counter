@@ -329,7 +329,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 | `test_dashboard.py` | Visibility rules, range/device filtering, empty state |
 | `test_devices.py` | Device CRUD, provisioning/unprovisioning |
 | `test_account.py` | Profile update, password change validation |
-| `test_admin.py` | Settings, SMTP, role/public toggle, user management |
+| `test_admin.py` | Settings, SMTP, setting role/public, user management |
 | `test_middleware.py` | `before_request` session handling, CSRF, rate limiting |
 | `test_subscriber.py` | The MQTT subscriber against fakes: bad readings skipped, a failed write retried |
 | `test_routes_access.py` | Walks `app.url_map`: who may open each route (`POLICY`), every guarded one called as each kind of session |

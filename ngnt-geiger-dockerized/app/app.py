@@ -712,7 +712,7 @@ def admin():
                         cur.execute(stmt, (key, val))
                 flash('Settings saved.' if action == 'save_settings' else 'SMTP settings saved.', 'success')
 
-        elif action in ('toggle_role', 'toggle_public', 'delete_user'):
+        elif action in ('set_role', 'set_public', 'delete_user'):
             try:
                 target_id = int(request.form.get('target_user_id', 0))
             except (ValueError, TypeError):
@@ -720,20 +720,30 @@ def admin():
                 db.close()
                 return redirect(url_for('admin'))
 
-            if action == 'toggle_role':
-                if target_id != session['user_id']:
+            if action in ('set_role', 'set_public'):
+                # The value the button asks for, not a flip: a double click, or a tab opened
+                # before the last change, leaves it as it is and says so.
+                if action == 'set_role':
+                    column, value = 'role', request.form.get('role')
+                    word = value if value in ('admin', 'user') else None
+                else:
+                    column, value = 'public', {'1': 1, '0': 0}.get(request.form.get('public'))
+                    word = {1: 'public', 0: 'private'}.get(value)
+                if word is None:
+                    flash('Invalid request.', 'error')
+                elif column == 'role' and target_id == session['user_id']:
+                    flash('You cannot change your own role.', 'error')
+                else:
                     with db.cursor() as cur:
-                        cur.execute("SELECT role FROM users WHERE id = %s", (target_id,))
+                        cur.execute(f"SELECT username, `{column}` AS was FROM users WHERE id = %s", (target_id,))
                         u = cur.fetchone()
-                        if u:
-                            new_role = 'user' if u['role'] == 'admin' else 'admin'
-                            cur.execute("UPDATE users SET role = %s WHERE id = %s", (new_role, target_id))
-                    flash('Role updated.', 'success')
-
-            elif action == 'toggle_public':
-                with db.cursor() as cur:
-                    cur.execute("UPDATE users SET `public` = NOT `public` WHERE id = %s", (target_id,))
-                flash('Visibility updated.', 'success')
+                        if not u:
+                            flash('User not found.', 'error')
+                        elif u['was'] == value:
+                            flash(f"{u['username']} is already {word}.", 'success')
+                        else:
+                            cur.execute(f"UPDATE users SET `{column}` = %s WHERE id = %s", (value, target_id))
+                            flash('Role updated.' if column == 'role' else 'Visibility updated.', 'success')
 
             elif action == 'delete_user' and target_id != session['user_id']:
                 with db.cursor() as cur:

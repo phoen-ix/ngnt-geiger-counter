@@ -69,6 +69,7 @@ To test, enter an email address under **Account**, sign out and use **Forgot pas
 
 - **Make someone admin or user:** click the button in **Role** (it shows the current role). Your own role button is disabled.
 - **Show or hide someone's counters:** click the button in **Public** (**Yes**/**No**). This is the same setting as **Public profile** on that user's **Account** page.
+- Both buttons set the other value, they don't flip it: a double click, or the same button in a tab opened before the change, changes nothing and says so (e.g. **alice is already admin.**).
 - **Delete a user:** click **Delete** and confirm. The broker stops accepting their counters, the account and its counters are removed, and the user is signed out at their next request. Their stored readings stay in the database but no longer appear. There is no **Delete** on your own row.
 
 You can't edit another user's email, pepper or password. A user who forgot their password and has no email address can't get back in; they can register a new account.

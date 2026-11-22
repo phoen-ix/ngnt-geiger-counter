@@ -132,8 +132,9 @@
                 <td>
                     <form method="post" style="display:inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="action" value="toggle_role">
+                        <input type="hidden" name="action" value="set_role">
                         <input type="hidden" name="target_user_id" value="{{ u['id'] }}">
+                        <input type="hidden" name="role" value="{{ 'user' if u['role'] == 'admin' else 'admin' }}">
                         <button type="submit" class="btn-sm"
                                 {% if u['id'] == session['user_id'] %}disabled title="Cannot change own role"{% endif %}>
                             {{ u['role'] }}
@@ -143,8 +144,9 @@
                 <td>
                     <form method="post" style="display:inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="action" value="toggle_public">
+                        <input type="hidden" name="action" value="set_public">
                         <input type="hidden" name="target_user_id" value="{{ u['id'] }}">
+                        <input type="hidden" name="public" value="{{ 0 if u['public'] else 1 }}">
                         <button type="submit" class="btn-sm">
                             {{ 'Yes' if u['public'] else 'No' }}
                         </button>

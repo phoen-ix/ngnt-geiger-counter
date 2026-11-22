@@ -3,6 +3,8 @@
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
+
 from tests.testutils import queue_before_request, queue_settings
 
 # ── GET /admin ──────────────────────────────────────────────────────────────
@@ -104,54 +106,51 @@ def test_without_an_smtp_user_the_password_is_cleared(admin_client, mock_cursor)
     assert _saved_smtp(admin_client, mock_cursor, smtp_user='', smtp_password='')['smtp_password'] == ''
 
 
-# ── Toggle role ─────────────────────────────────────────────────────────────
+# ── Role and visibility: the value the button asks for ───────────────────────
 
-def test_toggle_role_success(admin_client, mock_cursor):
+def _set(admin_client, mock_cursor, form, target):
+    """POST one Role/Public button for user 2 (`target`: their row, None if gone); the UPDATEs and flashes."""
     queue_before_request(mock_cursor, role='admin')
-    # SELECT role for target user
-    mock_cursor.add_response(fetchone={'role': 'user'})
-    # UPDATE role (no fetch)
-
-    resp = admin_client.post('/admin', data={
-        'action': 'toggle_role',
-        'target_user_id': '2',  # different from session user_id=1
-    })
+    mock_cursor.add_response(fetchone=target)
+    resp = admin_client.post('/admin', data={'target_user_id': '2', **form})
     assert resp.status_code == 302
-    update_calls = [(sql, params) for sql, params in mock_cursor.execute_log
-                    if 'UPDATE users SET role' in sql]
-    assert len(update_calls) == 1
-    _, params = update_calls[0]
-    assert params[0] == 'admin'  # toggled from user to admin
+    with admin_client.session_transaction() as sess:
+        flashes = sess.pop('_flashes', [])
+    return [params for sql, params in mock_cursor.execute_log if sql.startswith('UPDATE users')], flashes
 
 
-def test_toggle_role_cannot_change_self(admin_client, mock_cursor):
+@pytest.mark.parametrize('form, target, updates, message', [
+    ({'action': 'set_role', 'role': 'admin'}, {'username': 'bob', 'was': 'user'},
+     [('admin', 2)], ('success', 'Role updated.')),
+    ({'action': 'set_role', 'role': 'user'}, {'username': 'bob', 'was': 'admin'},
+     [('user', 2)], ('success', 'Role updated.')),
+    ({'action': 'set_public', 'public': '1'}, {'username': 'bob', 'was': 0},
+     [(1, 2)], ('success', 'Visibility updated.')),
+    ({'action': 'set_public', 'public': '0'}, {'username': 'bob', 'was': 1},
+     [(0, 2)], ('success', 'Visibility updated.')),
+    # A double click, or a tab opened before the last change: nothing changes, and the page says so.
+    ({'action': 'set_role', 'role': 'admin'}, {'username': 'bob', 'was': 'admin'},
+     [], ('success', 'bob is already admin.')),
+    ({'action': 'set_public', 'public': '1'}, {'username': 'bob', 'was': 1},
+     [], ('success', 'bob is already public.')),
+    ({'action': 'set_public', 'public': '0'}, {'username': 'bob', 'was': 0},
+     [], ('success', 'bob is already private.')),
+    ({'action': 'set_role', 'role': 'admin'}, None, [], ('error', 'User not found.')),
+    ({'action': 'set_role', 'role': 'root'}, {'username': 'bob', 'was': 'user'},
+     [], ('error', 'Invalid request.')),
+    ({'action': 'set_public', 'public': 'yes'}, {'username': 'bob', 'was': 0},
+     [], ('error', 'Invalid request.')),
+])
+def test_role_and_visibility_are_set_to_the_value_asked_for(admin_client, mock_cursor, form, target, updates, message):
+    assert _set(admin_client, mock_cursor, form, target) == (updates, [message])
+
+
+def test_set_role_cannot_change_self(admin_client, mock_cursor):
     queue_before_request(mock_cursor, role='admin')
-
-    resp = admin_client.post('/admin', data={
-        'action': 'toggle_role',
-        'target_user_id': '1',  # same as session user_id
-    })
-    assert resp.status_code == 302
-    # Verify no role UPDATE was executed
-    update_calls = [sql for sql, _ in mock_cursor.execute_log
-                    if 'UPDATE users SET role' in sql]
-    assert len(update_calls) == 0
-
-
-# ── Toggle public ───────────────────────────────────────────────────────────
-
-def test_toggle_public(admin_client, mock_cursor):
-    queue_before_request(mock_cursor, role='admin')
-    # UPDATE public (no fetch)
-
-    resp = admin_client.post('/admin', data={
-        'action': 'toggle_public',
-        'target_user_id': '2',
-    })
-    assert resp.status_code == 302
-    update_calls = [sql for sql, _ in mock_cursor.execute_log
-                    if 'UPDATE users SET' in sql and 'public' in sql]
-    assert len(update_calls) == 1
+    admin_client.post('/admin', data={'action': 'set_role', 'role': 'user', 'target_user_id': '1'})
+    assert not [sql for sql, _ in mock_cursor.execute_log if sql.startswith('UPDATE users')]
+    with admin_client.session_transaction() as sess:
+        assert sess['_flashes'] == [('error', 'You cannot change your own role.')]
 
 
 # ── Delete user ─────────────────────────────────────────────────────────────
@@ -224,7 +223,8 @@ def test_invalid_target_user_id(admin_client, mock_cursor):
     ])
 
     resp = admin_client.post('/admin', data={
-        'action': 'toggle_role',
+        'action': 'set_role',
+        'role': 'admin',
         'target_user_id': 'not-a-number',
     }, follow_redirects=True)
     assert b'Invalid request' in resp.data

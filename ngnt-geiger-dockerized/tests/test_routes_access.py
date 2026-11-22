@@ -78,7 +78,7 @@ def test_the_walk_sees_the_app(walk):
     assert len(walk) >= 16, walk
     assert {key: guard for key, guard, _ in walk} == POLICY
     assert sorted(a for key, _, view in walk if key == 'POST /admin' for a in _actions(view.__wrapped__)) == [
-        'delete_user', 'save_settings', 'save_smtp', 'toggle_public', 'toggle_role']
+        'delete_user', 'save_settings', 'save_smtp', 'set_public', 'set_role']
 
 
 @pytest.mark.parametrize('persona', PERSONAS)
