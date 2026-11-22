@@ -95,7 +95,8 @@ services:
         pids_limit: 64
         mem_limit: 128m
         ports:
-            - ${MOSQUITTO_PORTS}
+            # The plain listener for this host only, unless .env opens it (see .env.example).
+            - ${MOSQUITTO_PORTS:-127.0.0.1:2883:1883}
             - ${MOSQUITTO_PORTS_TLS}
         environment:
           MQTT_PYTHON_USER: ${MQTT_PYTHON_USER}

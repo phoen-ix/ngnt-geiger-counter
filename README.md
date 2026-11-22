@@ -224,7 +224,7 @@ Who sees which counters, what to back up, upgrading (MariaDB, older versions) an
 | Container | Image / Dockerfile | Exposes | Role |
 |-----------|-------------------|---------|------|
 | `ngnt-geiger-mariadb` | `mariadb:12.3.3` | 3306 (internal) | Persistent storage |
-| `ngnt-geiger-mosquitto` | `DockerfileMosquitto` (`eclipse-mosquitto:2.1.4-alpine` + openssl) | 8883 (TLS), 2883 -> 1883 (plain) | MQTT broker with TLS + auto-reload |
+| `ngnt-geiger-mosquitto` | `DockerfileMosquitto` (`eclipse-mosquitto:2.1.4-alpine` + openssl) | 8883 (TLS), 127.0.0.1:2883 -> 1883 (plain) | MQTT broker with TLS + auto-reload |
 | `ngnt-geiger-subscriber` | `DockerfileSubscriber` (`python:3.15.2-slim-trixie`) | — | Async MQTT subscriber -> DB |
 | `ngnt-geiger-flask` | `DockerfileFlask` (`python:3.15.2-slim-trixie`) | 1880 -> 8000 | Flask web dashboard + user management |
 
@@ -327,7 +327,7 @@ Design, schema and decisions: [HANDOVER.md](HANDOVER.md).
 ## Security notes
 
 - **MQTT TLS**: the firmware uses `WiFiClientSecure::setInsecure()`. It encrypts traffic, which stops passive eavesdropping of MQTT credentials over WiFi, but does not verify the server certificate, so it does not stop an active man-in-the-middle. Acceptable for a home network.
-- **Plain MQTT listener** (port 2883 -> 1883): stays available for un-updated devices and container-to-container traffic.
+- **Plain MQTT listener** (port 1883 inside the stack, for the subscriber): published on the host as `127.0.0.1:2883` only. A counter with firmware older than v3.2 (no TLS) needs it from the network: [admin guide](docs/admin-guide.md#counters-without-tls).
 - **Device credentials**: `devices.conf` and `passwd.txt` hold only Mosquitto password hashes, are gitignored and are managed at runtime by Flask provisioning and the Mosquitto entrypoint.
 - **Pepper**: stored in plaintext in the database, because the server needs it to derive credentials. Anyone who can read the database can derive every device's MQTT password from its MAC and the owner's pepper.
 - **Initial admin password**: written only to `data/admin_initial_password.txt` (mode 0600), never to the logs.

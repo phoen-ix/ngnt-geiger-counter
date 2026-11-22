@@ -30,7 +30,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Test suite | Done | pytest, mocked DB, no external deps; ruff lint (`ruff.toml`) in CI |
 | E2E suite | Done | Playwright in `ngnt-geiger-dockerized/e2e/tests/` against the whole stack (+ Mailpit), `scripts/e2e.sh`; `e2e/COVERAGE.md` |
 | Docs screenshot tour | Done | Playwright in `ngnt-geiger-dockerized/e2e/docs/`, run by `ngnt-geiger-dockerized/scripts/docs-screenshots.sh` (README "Screenshots") |
-| MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain) |
+| MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain: the subscriber; on the host 127.0.0.1:2883 unless `.env` opens it) |
 | Data export (CSV/JSON) | Not started | |
 | Grafana integration | Not started | |
 
@@ -369,7 +369,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 
 ## Known issues / limitations
 
-1. **MQTT TLS uses `setInsecure()`** — The firmware encrypts the MQTT connection but does not verify the server certificate (no protection against active MITM). This is acceptable on a home WiFi network where the primary threat is passive eavesdropping. The plain listener (port 1883) is still available internally for the Python subscriber and backward-compatible devices.
+1. **MQTT TLS uses `setInsecure()`** — The firmware encrypts the MQTT connection but does not verify the server certificate (no protection against active MITM). This is acceptable on a home WiFi network where the primary threat is passive eavesdropping. The plain listener (port 1883) serves the Python subscriber inside the stack; the host publishes it on 127.0.0.1:2883 only, unless `MOSQUITTO_PORTS` in `.env` opens it for a counter older than v3.2 (`tests/test_shipped_config.py` pins the default).
 
 2. **Synchronous DB in Flask** — PyMySQL is synchronous; each request blocks a Gunicorn worker during DB queries. With 2 workers this is fine for small deployments. For higher load, increase workers or switch to an async framework.
 

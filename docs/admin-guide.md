@@ -4,7 +4,7 @@ The admin's tasks in the web dashboard, plus backups, upgrades and a reset of th
 
 Audience: users with the **admin** role, and whoever runs the server. Installing the stack: [README](../README.md#server-quick-start). Everyday use (dashboard, adding a counter): [user guide](user-guide.md). Every screen: [screenshot gallery](screenshots/README.md).
 
-**Contents:** [What admins can do](#what-admins-can-do) · [First sign-in](#first-sign-in) · [Global settings](#global-settings) · [Password-reset email (SMTP)](#password-reset-email-smtp) · [Managing users](#managing-users) · [Who sees which counters](#who-sees-which-counters) · [Sign-in limits and a reverse proxy](#sign-in-limits-and-a-reverse-proxy) · [Backups](#backups) · [Upgrading](#upgrading) · [Reset](#reset)
+**Contents:** [What admins can do](#what-admins-can-do) · [First sign-in](#first-sign-in) · [Global settings](#global-settings) · [Password-reset email (SMTP)](#password-reset-email-smtp) · [Managing users](#managing-users) · [Who sees which counters](#who-sees-which-counters) · [Sign-in limits and a reverse proxy](#sign-in-limits-and-a-reverse-proxy) · [Counters without TLS](#counters-without-tls) · [Backups](#backups) · [Upgrading](#upgrading) · [Reset](#reset)
 
 ## What admins can do
 
@@ -98,6 +98,10 @@ Past the limit the form answers **429 Too Many Requests** until the minute is ov
 
 **Behind a reverse proxy** (nginx, Traefik, Caddy, …) every request arrives from the proxy's address. Set `TRUSTED_PROXY_HOPS` in `.env` to the number of proxies in front of the app that add `X-Forwarded-For` (one proxy: `1`), then `docker compose up -d`. The app then takes the address the outermost proxy saw. Leave it at `0` (the default) when browsers reach port 1880 directly: with a higher value anyone could name their own address in that header.
 
+## Counters without TLS
+
+Counters send over TLS to port `8883` (firmware v3.2 and later). The broker's plain port is published on the server itself only (`MOSQUITTO_PORTS=127.0.0.1:2883:1883` in `.env`), for tools running there. A counter with older firmware connects without TLS to port `2883`: to let it in from the network, set `MOSQUITTO_PORTS=2883:1883` in `.env` and run `docker compose up -d`. Its login and readings then cross the network unencrypted; update its firmware and set the port back when you can.
+
 ## Backups
 
 The state lives in the checkout's `ngnt-geiger-dockerized/` directory:
@@ -149,6 +153,10 @@ docker compose up -d --build --force-recreate
 - **Version:** `DOCKER_IMAGE_MARIADB_TAG` in `.env` (`.env.example` ships `12.3.3`). An existing install keeps its own value until you change it.
 - **In-place upgrade:** the service sets `MARIADB_AUTO_UPGRADE=1`, so after raising the tag the container upgrades `volumes/mariadb` on its first start.
 - **Dump first:** a major-version upgrade cannot be rolled back.
+
+### The plain MQTT port (from v3.5 or earlier)
+
+New installs publish the plain MQTT port on `127.0.0.1` only. An existing `.env` keeps `MOSQUITTO_PORTS=2883:1883`, open to the network: change it to `127.0.0.1:2883:1883` unless a counter still needs it ([Counters without TLS](#counters-without-tls)).
 
 ### Stored device passwords (from v3.5 or earlier)
 
