@@ -100,7 +100,7 @@ Without a pepper, **Devices** asks you to set one first.
 3. Click **Register Device**. The page answers **Device geiger_… registered and provisioned.**
 4. The broker accepts the counter within 5 seconds. The counter connects on its next attempt (at most 2 minutes if it is showing the info screen), and its first reading follows within about three minutes (it starts counting at the next full minute).
 
-<img src="screenshots/devices.png" alt="Devices page: the register-device form and two counters, one online and one offline, with MAC, last seen and provisioning state" width="800">
+<img src="screenshots/devices.png" alt="Devices page: the register-device form and two counters, one online and one offline, with alert threshold, MAC, last seen and provisioning state" width="800">
 
 **Device geiger_… already registered.** means that counter is already on the server, on your account or someone else's.
 
