@@ -3,17 +3,17 @@
 Every user-facing feature of the web app and the MQTT pipeline, mapped to the test that exercises it
 (`tests/<spec> › <title>`), or ❌ with the reason it is not an e2e test here.
 
-Extracted 2026-10-31 with (in `ngnt-geiger-dockerized/`):
+Extracted 2026-10-31, updated 2026-11-22, with (in `ngnt-geiger-dockerized/`):
 
 ```bash
 grep -n "@app.route" app/app.py                                   # 9 routes (+ Flask's /static)
 grep -no 'name="action" value="[a-z_]*"' app/templates/*.html     # 10 form actions
-grep -n "onsubmit\|onchange" app/templates/*.html                 # 2 confirm dialogs, 1 auto-submit
+grep -n "data-confirm\|data-autosubmit" app/templates/*.html     # 2 confirm dialogs, 1 auto-submit
 grep -n "flash(" app/app.py                                       # messages / error states
 grep -n "elif msg.get\|if 'cpm' in msg" scripts/pm2/mqtt_bro_impulses.py   # 3 MQTT message kinds
 ```
 
-**122 items: 118 ✅, 4 ❌ (3 × (c), 1 × (a)).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
+**134 items: 129 ✅, 5 ❌ (3 × (c) covered by pytest, 1 × (a) hardware, 1 × (d) waits for an owner decision).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
 `main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`.
 
 ## Routes × roles (breadth)
@@ -52,18 +52,21 @@ no 5xx, no request leaving the stack.
 | Register: "Username and password are required." (only reachable without the browser's `required`) | ❌ (c) `tests/test_auth.py::test_register_empty_fields` |
 | Register disabled → `/login` with message | ✅ `global › registration disabled: the register page sends people to the login page` |
 | Login: success, "Logged in.", nav switches | ✅ `sign in and out › sign in, then sign out` |
+| Sign in, out and in again through the form | ✅ `repeat › sign in, out and in again through the form` |
 | Login: wrong password / unknown user, same message | ✅ `sign in and out › a wrong password or an unknown user gets the same message` |
 | Logout: "Logged out.", protected pages back to `/login` | ✅ `sign in and out › sign in, then sign out` |
 | Links login ↔ forgot-password ↔ register | ✅ `sign in and out › the login page links to forgot-password and register` |
 | Forgot password → mail (Mailpit) with the `base_url` link → new password → sign in; old password fails | ✅ `password reset › mail link sets a new password once; the old one stops working` |
 | Reset link is single-use | ✅ same |
+| Two reset mails: the newer link sets the password, then the older one is dead | ✅ `repeat › two reset mails: the newer link sets the password, the older one is dead after that` |
+| A password change ends the reset links sent before it | ✅ `password reset › a password change ends the reset links sent before it` |
 | Forgot password: unknown user / user without email → same message, no token, no mail | ✅ `password reset › no mail for an unknown user or one without an email, same message` |
 | Reset: unknown token, expired token → `/login` "Invalid or expired reset link." | ✅ `password reset › an unknown or expired link goes back to the login page` |
 | Reset: password too short / mismatched, token stays unused | ✅ `password reset › a short or mismatched new password is refused` |
 | Session ends when the password changes elsewhere (`pw_version`) | ✅ `account › change the password: this session stays, the others are signed out` |
 | Session ends when the user is deleted | ✅ `admin › delete a user after confirming: devices unprovisioned, their session ends` |
 | Role change applies without signing in again | ✅ `admin › promote a user to admin and back; the role applies without signing in again` |
-| Session lifetime = session timeout setting | ✅ `global › the session timeout sets how long a sign-in lasts` |
+| Session lifetime = session timeout setting (an idle session ends on every worker: `tests/test_middleware.py`) | ✅ `global › the session timeout sets how long a sign-in lasts` |
 | Rate limit: login 10/min → 429 | ✅ `limits › POST /login answers 429 after 10 a minute` |
 | Rate limit: register 5/min → 429 | ✅ `limits › POST /register answers 429 after 5 a minute` |
 | Rate limit: forgot-password 5/min → 429 | ✅ `limits › POST /forgot-password answers 429 after 5 a minute` |
@@ -77,15 +80,16 @@ no 5xx, no request leaving the stack.
 | Guest sees public users' counters only | ✅ `visibility: guests see public counters, users also their own, admins all` |
 | User sees own + public | ✅ same |
 | Admin sees all | ✅ same |
-| `?device=` of a counter you may not see → all devices | ✅ same |
+| `?device=` of a counter you may not see → all devices, nothing of that counter shown | ✅ same |
 | Device filter (auto-submitting select), keeps range, header without device name, table/cards of that device | ✅ `the device filter shows one counter, keeps the range and the header drops the device name` |
 | "All devices" again | ✅ same |
+| Device filter after Back: shows all devices again, picking the counter again works | ✅ `repeat › the device filter after Back: it shows what the page shows, and picking again works` |
 | Only one visible counter → no device filter | ❌ (c) `tests/test_dashboard.py::test_dashboard_single_device_has_no_device_filter` (every other test's public counters are visible in e2e) |
 | No visible counters at all → "Waiting for first measurement" | ❌ (c) `tests/test_dashboard.py::test_dashboard_empty_state` (same reason); the per-counter empty state is ✅ below |
 | Ranges 1 h / 6 h / 24 h / 7 d: active tab, headings, table rows, chart points | ✅ `the time ranges: each lists the readings inside it` |
 | Unknown range → 24 h | ✅ same |
 | Auto-refresh every 60 s with range and device | ✅ same (`meta refresh`) |
-| Cards: CPM, dose rate (4 decimals), readings count, "100+" and 100 rows max | ✅ `cards: dose rate turns orange above the alert threshold; 100+ readings` |
+| Cards: CPM, dose rate (4 decimals), readings count, "100+" only above 100, and 100 rows max | ✅ `cards: dose rate turns orange above the alert threshold; 100+ readings` |
 | Dose rate orange above the device's alert threshold | ✅ same |
 | Dose rate orange above the default alert threshold | ✅ `global › the offline timeout and the default alert threshold change the dashboard cards` |
 | Device card online / offline (status + last seen within the offline timeout) | ✅ `online means status online and seen within the offline timeout` |
@@ -100,13 +104,17 @@ no 5xx, no request leaving the stack.
 | Feature / state | Test |
 |---|---|
 | Register a device: lower-case MAC accepted, ID derived like the firmware, no password column in the DB, listed (offline, —, Yes) | ✅ `devices › register a device: credentials derived like the firmware, listed as not yet seen` |
-| Malformed MAC: browser pattern, server message | ✅ `devices › a malformed MAC is refused, in the browser and by the server` |
-| Device ID already registered (any user) | ✅ `devices › a MAC whose device ID is taken, by anyone, is refused` |
+| Malformed MAC: browser pattern, server message, the typed MAC kept | ✅ `devices › a malformed MAC is refused, in the browser and by the server` |
+| Device ID already registered (any user); the form keeps MAC and name | ✅ `devices › a MAC whose device ID is taken, by anyone, is refused; the form keeps what was typed` |
+| A refused registration, corrected on the same page | ✅ `repeat › a refused registration, corrected on the same page, registers` |
+| Two counters registered in a row, both log in | ✅ `repeat › register two counters in a row; both are listed and both log in` |
+| Delete a counter and register the same MAC again; it logs in again | ✅ `repeat › delete a counter and register the same MAC again; it logs in again` |
 | No pepper: no form, link to account; server refuses the POST | ✅ `devices › without a pepper there is no form, only a link to the account page` |
 | Rename; clear name → device ID placeholder | ✅ `devices › rename a device, and clear its name back to the device ID` |
 | Display name over 100 characters, add and rename (was a 500) | ✅ `devices › a display name over 100 characters is refused, not a server error` |
 | Delete: confirm dialog text, cancel keeps it, accept deletes | ✅ `devices › delete a device after confirming; cancelling keeps it` |
-| Only own devices listed; others' cannot be renamed or deleted | ✅ `devices › only your own devices are listed, and another user's cannot be renamed or deleted` |
+| Another user and an admin: not listed, rename and delete refused ("Device not found."), the counter keeps logging in | ✅ `devices › another user and an admin can neither see, rename nor delete someone's counter; it keeps logging in` |
+| Renaming a counter deleted in another tab → "Device not found." | ✅ `devices › a counter deleted in another tab cannot be renamed there` |
 | Last seen in the display timezone | ✅ `global › the display timezone applies to dashboard and devices dates` |
 | Provisioning reaches Mosquitto (devices.conf + reload): derived credentials accepted over TLS, wrong ones refused | ✅ `mqtt › register, connect, measure, go offline, delete` |
 | MQTT "connected" → online + last seen | ✅ same |
@@ -114,7 +122,8 @@ no 5xx, no request leaving the stack.
 | MQTT last will "offline" → offline | ✅ same |
 | Delete unprovisions: credentials refused again | ✅ same |
 | A counter's payload naming another device is ignored (was stored) | ✅ `mqtt › a counter cannot report readings or status for another user's device` |
-| Invalid JSON / missing fields skipped, the subscriber keeps going | ✅ `mqtt › malformed messages are skipped and the next reading is stored` |
+| ACL: a counter can neither publish on another counter's topic nor subscribe to all readings | ✅ `mqtt › a counter can neither publish on another counter's topic nor read the others' readings` |
+| Invalid JSON, missing or wrong-typed fields skipped, the subscriber keeps going (values MariaDB refuses, a failed write: `tests/test_subscriber.py`) | ✅ `mqtt › malformed messages are skipped and the next reading is stored` |
 
 ## Account (`account.spec.ts`)
 
@@ -127,6 +136,7 @@ no 5xx, no request leaving the stack.
 | Non-ASCII or over-64 pepper, over-255 email refused (were a 500 on adding a device / saving) | ✅ `a non-ASCII or over-long pepper and an over-long email are refused` |
 | Change password: wrong current, too short, mismatched | ✅ `change the password: wrong current, too short and mismatched are refused` |
 | Change password: this session stays (was signed out without a message), other sessions end, new password works | ✅ `change the password: this session stays, the others are signed out` |
+| Change the password twice in a row; only the last one signs in | ✅ `repeat › change the password twice in a row; only the last one signs in` |
 
 ## Admin (`admin.spec.ts`, `global.spec.ts`)
 
@@ -138,15 +148,16 @@ no 5xx, no request leaving the stack.
 | Toggle public Yes ↔ No (dashboard follows) | ✅ `admin › toggle a user public and private` |
 | Delete user: confirm text, cancel keeps, accept deletes, devices unprovisioned in Mosquitto | ✅ `admin › delete a user after confirming: devices unprovisioned, their session ends` |
 | Malformed target user id → "Invalid request." | ✅ `admin › a malformed user id is refused` |
-| Non-admin: page and POSTs redirected to `/`, nothing changed | ✅ `admin › a user cannot open or post to the admin page` |
-| Global settings saved and shown; CPM factor read-only | ✅ `global › settings are saved and shown again; the CPM factor is read-only` |
+| Non-admin: page and all 5 POST actions redirected to `/`, nothing changed (every guarded route as every kind of session: `tests/test_routes_access.py`) | ✅ `admin › a user cannot open or post to the admin page` |
+| Role / Public: a double click or a stale tab changes it once | ❌ (d) `repeat › a double click on a role or visibility button changes it once` is `test.fixme`: the buttons post a toggle (owner decision X1) |
+| Global settings saved and shown, and saved again on the same page; CPM factor read-only | ✅ `global › settings are saved and shown again; the CPM factor is read-only` |
 | Registration open/disabled | ✅ `global › registration disabled: the register page sends people to the login page` |
 | Display timezone | ✅ `global › the display timezone applies to dashboard and devices dates` |
 | Offline timeout, default alert threshold | ✅ `global › the offline timeout and the default alert threshold change the dashboard cards` |
 | Session timeout | ✅ `global › the session timeout sets how long a sign-in lasts` |
 | Invalid settings refused (empty session/offline timeout locked everyone out / broke the dashboard; text threshold; unknown timezone; over-255 value) | ✅ `global › invalid settings are refused, nothing is saved and nobody is locked out` |
 | Base URL used in the reset mail | ✅ `auth › password reset › mail link sets a new password once; the old one stops working` |
-| SMTP settings saved and shown, password masked, STARTTLS select | ✅ `global › SMTP settings are saved and shown again, the password masked` |
+| SMTP settings saved and shown, STARTTLS select; the stored password never in the page, kept when left empty, cleared without a user | ✅ `global › SMTP settings are saved and shown again; the password never comes back to the page` |
 | SMTP port empty refused (broke every reset mail); EHLO name saved, placeholder hint, a space refused | ✅ same |
 | SMTP delivery (host, port, from, no TLS) | ✅ `setup` + `auth › password reset › mail link …` (Mailpit) |
 

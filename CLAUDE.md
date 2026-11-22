@@ -44,7 +44,13 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
   only renders with two visible counters, so a test that reads it creates both); every sign-in goes through
   `signIn()`/`submitForm()`, which wait out the login/register/forgot-password rate limits (one IP for the whole
   suite). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores the defaults);
-  `limits.spec.ts` runs last.
+  `limits.spec.ts` runs last; every other spec runs in `main` without being listed. `repeat.spec.ts` does each
+  repeatable action twice in a row. `scripts/e2e.sh` first type-checks and lints `e2e/` (`npm run lint`:
+  `tsc` + `no-floating-promises`).
+- Test hygiene: `tests/test_e2e_hygiene.py` scans every e2e and pytest file for steps a person would not take
+  (sleeps, forced or synthetic events, actions inside `expect.poll`/loops, page scripts that change the page);
+  a kept use goes on its allowlist with a count and a reason. A failing test is a product finding: never bend it.
+- Access: `tests/test_routes_access.py` walks `app.url_map`; a new route fails until `POLICY` says who may open it.
 - `devices.conf` holds `device_id:$7$…` hashes (Mosquitto password-file format), never a password; the Mosquitto
   entrypoint copies them into `passwd.txt`. The initial admin password goes only to `data/admin_initial_password.txt`.
 - The subscriber takes the device ID from the MQTT topic (the ACL ties it to the device's login), never from the

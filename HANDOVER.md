@@ -332,6 +332,9 @@ The tests run on the host without Docker or external dependencies. All DB access
 | `test_admin.py` | Settings, SMTP, role/public toggle, user management |
 | `test_middleware.py` | `before_request` session handling, CSRF, rate limiting |
 | `test_subscriber.py` | The MQTT subscriber against fakes: bad readings skipped, a failed write retried |
+| `test_routes_access.py` | Walks `app.url_map`: who may open each route (`POLICY`), every guarded one called as each kind of session |
+| `test_e2e_hygiene.py` | Scans every e2e and pytest file for steps a person would not take (allowlist with reasons) |
+| `test_hand_kept_lists.py` | Copies kept by hand (mocked settings, form labels, e2e rate limits) against their source |
 
 ---
 

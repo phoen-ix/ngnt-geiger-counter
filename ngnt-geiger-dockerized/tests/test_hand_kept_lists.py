@@ -37,3 +37,11 @@ def test_the_e2e_rate_limits_are_the_apps():
     spec = (ROOT / 'e2e' / 'tests' / 'limits.spec.ts').read_text()
     assert dict(re.findall(r"\['(/[\w-]+)', (\d+),", spec)) == limits
     assert len(limits) == 3
+
+
+def test_the_coverage_counts_are_the_tables():
+    coverage = (ROOT / 'e2e' / 'COVERAGE.md').read_text()
+    rows = [line for line in coverage.splitlines() if line.startswith('| ')]
+    done, missing = (sum(line.count(mark) for line in rows) for mark in ('✅', '❌'))
+    total, said_done, said_missing = map(int, re.search(r'\*\*(\d+) items: (\d+) ✅, (\d+) ❌', coverage).groups())
+    assert (total, said_done, said_missing) == (done + missing, done, missing)

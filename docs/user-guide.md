@@ -30,7 +30,8 @@ You stay signed in until you click **Logout** or until the session timeout the a
 
 1. On the login page click **Forgot password?**
 2. Enter your **Username** and click **Send Reset Link**.
-3. Open the email and follow its link within one hour.
+3. Open the email and follow its link within one hour. A link works once; setting a password (by any link or on
+   the account page) ends the other links you were sent.
 4. Enter the **New password** twice and click **Reset Password**.
 
 <img src="screenshots/forgot-password.png" alt="Forgot Password form asking for the username" width="800">
@@ -46,7 +47,7 @@ The page always answers **If that account exists and has an email, a reset link 
 - **Which counters:** visitors see the counters of users with a public profile; signed in, you also see your own; admins see all.
 - **Range:** **Last hour**, **Last 6 hours**, **Last 24 hours** (default) or **Last 7 days** sets the chart and the table.
 - **Device:** with two or more counters visible, pick one in the **Device** dropdown, or **All devices**.
-- **Cards:** **CPM** (counts per minute) and **Dose rate** (µSv/h) of the newest reading; the dose rate turns orange above the alert threshold (0.5 µSv/h unless the admin changed it). **Device** names the counter and says **online** (green) or **offline** (orange). **Readings stored** counts the readings in the range, up to **100+**.
+- **Cards:** **CPM** (counts per minute) and **Dose rate** (µSv/h) of the newest reading; the dose rate turns orange above the alert threshold (0.5 µSv/h unless the admin changed it). **Device** names the counter and says **online** (green) or **offline** (orange). **Readings stored** counts the readings in the range, up to 100; more show as **100+**.
 - **Table:** the newest 100 readings of the range, in the admin's display timezone.
 
 The page reloads every 60 seconds. A counter counts as offline when it has sent nothing for longer than the admin's offline timeout (5 minutes by default) or the broker has reported it gone; its cards keep the last reading:

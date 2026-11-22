@@ -56,7 +56,7 @@ There is no form to create a user: people register themselves. To add someone wh
 |-------|---------|-------|
 | **SMTP Host** | empty | Empty: no reset mail is sent. |
 | **SMTP Port** | `587` | |
-| **SMTP User**, **SMTP Password** | empty | Leave **SMTP User** empty for a server without login. |
+| **SMTP User**, **SMTP Password** | empty | Leave **SMTP User** empty for a server without login. The page never shows the stored password: left empty, it is kept; saved without a user, it is cleared. |
 | **From Address** | empty | `Name <address>` or an address (the name defaults to `SITE_NAME`). Empty: the **SMTP User** is the sender. An address at `example.com`, `.local` or without a dot in the domain sends nothing. |
 | **EHLO Name** | empty | The name the app greets the mail server with (EHLO). Empty: the domain of the sender. Letters, digits, dots and hyphens only. |
 | **Use STARTTLS** | **Yes** | **No** sends without encryption (e.g. a relay on port 25). Port `465` is always implicit TLS. The server certificate is verified. |
