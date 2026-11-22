@@ -695,6 +695,10 @@ def admin():
         if action in ('save_settings', 'save_smtp'):
             keys = SETTINGS_KEYS if action == 'save_settings' else SMTP_KEYS
             values = {k: request.form[k].strip() for k in keys if k in request.form}
+            # The page never shows the stored password: left empty, it is kept, unless there is
+            # no SMTP user any more (no login, so no password).
+            if not values.get('smtp_password') and values.get('smtp_user'):
+                values.pop('smtp_password', None)
             errors = [e for k, v in values.items() if (e := setting_error(k, v))]
             if errors:
                 flash(errors[0], 'error')

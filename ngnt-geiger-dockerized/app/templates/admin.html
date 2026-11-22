@@ -78,8 +78,8 @@
         </div>
         <div class="form-row">
             <label for="smtp-pw">SMTP Password</label>
-            <input type="password" id="smtp-pw" name="smtp_password"
-                   value="{{ settings.get('smtp_password', '') }}">
+            <input type="password" id="smtp-pw" name="smtp_password" autocomplete="new-password"
+                   {%- if settings.get('smtp_password') %} placeholder="stored; empty keeps it"{% endif %}>
         </div>
         <div class="form-row">
             <label for="smtp-from">From Address</label>

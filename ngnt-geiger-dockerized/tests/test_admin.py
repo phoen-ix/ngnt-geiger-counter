@@ -76,6 +76,34 @@ def test_save_smtp(admin_client, mock_cursor):
     assert ('smtp_ehlo_name', 'mx.example.com') in setting_calls
 
 
+def test_the_stored_smtp_password_never_goes_back_to_the_page(admin_client, mock_cursor):
+    queue_before_request(mock_cursor, role='admin')
+    queue_settings(mock_cursor, smtp_user='mailer', smtp_password='s3cret-pw')
+    mock_cursor.add_response(fetchall=[])
+
+    resp = admin_client.get('/admin')
+    assert b'SMTP Password' in resp.data
+    assert b's3cret-pw' not in resp.data
+    assert b'placeholder="stored; empty keeps it"' in resp.data
+
+
+def _saved_smtp(admin_client, mock_cursor, **form):
+    queue_before_request(mock_cursor, role='admin')
+    admin_client.post('/admin', data={'action': 'save_smtp', 'smtp_host': 'smtp.example.com', 'smtp_port': '587',
+                                      'smtp_from': 'noreply@example.com', 'smtp_tls': '1', **form})
+    return dict(params for sql, params in mock_cursor.execute_log if 'INSERT INTO settings' in sql)
+
+
+def test_an_empty_smtp_password_keeps_the_stored_one(admin_client, mock_cursor):
+    saved = _saved_smtp(admin_client, mock_cursor, smtp_user='mailer', smtp_password='')
+    assert saved['smtp_user'] == 'mailer'
+    assert 'smtp_password' not in saved
+
+
+def test_without_an_smtp_user_the_password_is_cleared(admin_client, mock_cursor):
+    assert _saved_smtp(admin_client, mock_cursor, smtp_user='', smtp_password='')['smtp_password'] == ''
+
+
 # ── Toggle role ─────────────────────────────────────────────────────────────
 
 def test_toggle_role_success(admin_client, mock_cursor):

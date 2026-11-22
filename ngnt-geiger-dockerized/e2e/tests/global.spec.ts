@@ -35,6 +35,13 @@ test('settings are saved and shown again; the CPM factor is read-only', async ({
   await expect(page.getByLabel('Offline Timeout (minutes)')).toHaveValue('7')
   await expect(page.getByLabel('Default CPM Factor')).toBeDisabled()
   await expect(page.getByLabel('Default CPM Factor')).toHaveValue('0.0057')
+
+  // Again, on the page the first save left.
+  await page.getByLabel('Offline Timeout (minutes)').fill('8')
+  await page.getByRole('button', { name: 'Save Settings' }).click()
+  await expect(flash(page)).toHaveText('Settings saved.')
+  await expect(page.getByLabel('Offline Timeout (minutes)')).toHaveValue('8')
+  await expect(page.getByLabel('Base URL')).toHaveValue('https://geiger.e2e.example')
 })
 
 test('registration disabled: the register page sends people to the login page', async ({ open }) => {
@@ -122,10 +129,10 @@ test('invalid settings are refused, nothing is saved and nobody is locked out', 
   expect(res?.status()).toBe(200)
 })
 
-test('SMTP settings are saved and shown again, the password masked', async ({ open }) => {
+test('SMTP settings are saved and shown again; the password never comes back to the page', async ({ open }) => {
   const page = await open(ADMIN_STATE)
   await page.goto('/admin')
-  const before = Object.fromEntries(
+  const before: Record<string, string> = Object.fromEntries(
     await Promise.all(['SMTP Host', 'SMTP Port', 'From Address'].map(async (l) => [l, await page.getByLabel(l).inputValue()])),
   )
   await page.getByLabel('SMTP User').fill('mailer')
@@ -136,9 +143,16 @@ test('SMTP settings are saved and shown again, the password masked', async ({ op
   await expect(flash(page)).toHaveText('SMTP settings saved.')
   await expect(page.getByLabel('SMTP User')).toHaveValue('mailer')
   await expect(page.getByLabel('EHLO Name')).toHaveValue('mx.geiger-e2e.example')
-  await expect(page.getByLabel('SMTP Password')).toHaveAttribute('type', 'password')
+  // Not in the field, nor anywhere in the page source.
+  await expect(page.getByLabel('SMTP Password')).toHaveValue('')
+  await expect(page.getByLabel('SMTP Password')).toHaveAttribute('placeholder', 'stored; empty keeps it')
+  expect(await page.content()).not.toContain('e2e-smtp-secret')
   for (const [l, v] of Object.entries(before)) await expect(page.getByLabel(l)).toHaveValue(v)
   await expect(page.getByLabel('Use STARTTLS')).toHaveValue('0')
+  // Saved again without typing it: it is kept.
+  await page.getByRole('button', { name: 'Save SMTP' }).click()
+  await expect(flash(page)).toHaveText('SMTP settings saved.')
+  expect(sql("SELECT `value` FROM settings WHERE `key` = 'smtp_password';")).toBe('e2e-smtp-secret')
 
   // An empty port would break every reset mail (int('') in the mailer).
   await page.getByLabel('SMTP Port').fill('')
@@ -151,10 +165,11 @@ test('SMTP settings are saved and shown again, the password masked', async ({ op
   await expect(flash(page)).toHaveText('EHLO Name may only contain letters, digits, dots and hyphens.')
   await expect(page.getByLabel('EHLO Name')).toHaveValue('mx.geiger-e2e.example')
 
-  // Back to Mailpit without login (setup.ts).
+  // Back to Mailpit without login (setup.ts): no user, so no password either.
   await page.getByLabel('SMTP User').fill('')
-  await page.getByLabel('SMTP Password').fill('')
   await page.getByLabel('EHLO Name').fill('')
   await page.getByRole('button', { name: 'Save SMTP' }).click()
   await expect(flash(page)).toHaveText('SMTP settings saved.')
+  await expect(page.getByLabel('SMTP Password')).not.toHaveAttribute('placeholder')
+  expect(sql("SELECT `value` FROM settings WHERE `key` = 'smtp_password';")).toBe('')
 })
