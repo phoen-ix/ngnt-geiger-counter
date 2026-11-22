@@ -32,11 +32,12 @@ def app_instance():
     def make_bootstrap_db():
         return MockDB(bootstrap_cursor)
 
+    # Clear cached modules first: patch() imports helpers, and app must import that patched one
+    # (cleared inside the patch, app imported a fresh helpers and the bootstrap tried a real
+    # database for 60 s).
+    for mod in ('app', 'helpers'):
+        sys.modules.pop(mod, None)
     with patch('helpers.get_db', side_effect=make_bootstrap_db):
-        # Clear cached modules to force fresh import under mock
-        for mod in list(sys.modules):
-            if mod in ('app', 'helpers'):
-                del sys.modules[mod]
         import app as app_module
 
     flask_app = app_module.app
