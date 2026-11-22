@@ -86,9 +86,8 @@ test('the offline timeout and the default alert threshold change the dashboard c
 
 test('the session timeout sets how long a sign-in lasts', async ({ open }) => {
   const admin = await open(ADMIN_STATE)
-  // Not below the age of the saved admin session (setup.ts): Flask rejects
-  // cookies older than the lifetime, and the other worker keeps the lowered
-  // value until a signed-in request reaches it.
+  // Not below the age of the saved admin session (setup.ts): the app ends a
+  // session idle for longer, and the afterEach restores the defaults with it.
   await saveSettings(admin, { 'Session Timeout (minutes)': '60' })
   await expect(flash(admin)).toHaveText('Settings saved.')
   const page = await open(await signIn(createUser().username))

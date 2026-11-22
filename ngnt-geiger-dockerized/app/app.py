@@ -10,6 +10,7 @@ from flask import Flask, flash, redirect, render_template, request, session, url
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from itsdangerous import BadSignature
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from helpers import (
@@ -92,10 +93,20 @@ def refresh_session():
     if 'pw_version' in session and user['pw_version'] != session['pw_version']:
         session.clear()
         return
+    lifetime = timedelta(minutes=int(user['session_timeout'] or 1440))
+    # Flask checked the cookie's age before this request read the setting, against the lifetime
+    # this worker set last (Flask's 31 days after a start): check it against the setting.
+    try:
+        app.session_interface.get_signing_serializer(app).loads(
+            request.cookies[app.session_interface.get_cookie_name(app)], max_age=lifetime.total_seconds())
+    except BadSignature:
+        session.clear()
+        return
     session['role'] = user['role']
     session['pw_version'] = user['pw_version']
     session.permanent = True
-    app.permanent_session_lifetime = timedelta(minutes=int(user['session_timeout'] or 1440))
+    # For the cookie this response renews (one request at a time per gunicorn worker).
+    app.permanent_session_lifetime = lifetime
 
 
 # ── Admin bootstrap ─────────────────────────────────────────────────────────

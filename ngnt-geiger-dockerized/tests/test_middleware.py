@@ -1,6 +1,10 @@
 """Tests for before_request middleware, CSRF, and rate limiting."""
 
+from datetime import timedelta
 from unittest.mock import patch
+
+import pytest
+from itsdangerous import TimestampSigner
 
 from tests.testutils import queue_settings
 
@@ -89,6 +93,40 @@ def test_before_request_session_timeout(client, mock_cursor, app_instance):
 
     client.get('/')
     assert app_instance.permanent_session_lifetime == timedelta(minutes=30)
+
+
+# ── before_request: the session timeout decides on every worker ────────────
+
+def _signed_in_minutes_ago(client, monkeypatch, minutes):
+    """A signed-in session whose cookie was last renewed `minutes` ago (Flask renews it on
+    every request, so that is how long the person has been idle)."""
+    real = TimestampSigner.get_timestamp
+    with monkeypatch.context() as m:
+        m.setattr(TimestampSigner, 'get_timestamp', lambda self: real(self) - minutes * 60)
+        with client.session_transaction() as sess:
+            sess.update(user_id=1, username='testuser', role='user', pw_version=0)
+
+
+@pytest.mark.parametrize('worker_lifetime', [timedelta(days=31), timedelta(minutes=1440)],
+                         ids=['a worker after a start', 'a worker that saw the old timeout'])
+@pytest.mark.parametrize(('idle', 'signed_in'), [(29, True), (31, False)], ids=['idle 29 min', 'idle 31 min'])
+def test_the_session_timeout_ends_an_idle_session_on_every_worker(
+        client, mock_cursor, app_instance, monkeypatch, worker_lifetime, idle, signed_in):
+    """Flask checks the cookie's age before the request reads the setting, against the lifetime
+    this gunicorn worker set last: Flask's 31 days after a start, the old value after an admin
+    lowered it. Either let a session idle past the timeout back in, and renewed it."""
+    _signed_in_minutes_ago(client, monkeypatch, idle)
+    monkeypatch.setattr(app_instance, 'permanent_session_lifetime', worker_lifetime)
+    mock_cursor.add_response(fetchone={'pw_version': 0, 'role': 'user', 'session_timeout': '30'})
+    mock_cursor.add_response(fetchone={'pepper': None})
+    queue_settings(mock_cursor)
+    mock_cursor.add_response(fetchall=[])
+
+    resp = client.get('/devices')
+    if signed_in:
+        assert resp.status_code == 200
+    else:
+        assert (resp.status_code, resp.headers['Location']) == (302, '/login')
 
 
 # ── before_request: DB error swallowed ──────────────────────────────────────
