@@ -19,6 +19,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 2,
   retries: ci ? 1 : 0,
+  // A test that passes only on its retry is a failure: the retry keeps its trace.
+  failOnFlakyTests: !!process.env.CI,
   forbidOnly: ci,
   reporter: [['list'], ['html', { open: 'never', outputFolder: `${process.env.E2E_ARTIFACTS ?? '.'}/playwright-report` }]],
   outputDir: `${process.env.E2E_ARTIFACTS ?? '.'}/test-results`,
@@ -35,7 +37,8 @@ export default defineConfig({
   },
   projects: [
     { name: 'setup', testMatch: 'setup.ts' },
-    { name: 'main', testMatch: /(sweep|auth|devices|mqtt|dashboard|account|admin)\.spec\.ts/, dependencies: ['setup'] },
+    // Every other spec: a new file runs without being named here.
+    { name: 'main', testMatch: '*.spec.ts', testIgnore: /(global|limits)\.spec\.ts/, dependencies: ['setup'] },
     { name: 'global', testMatch: 'global.spec.ts', dependencies: ['main'] },
     { name: 'limits', testMatch: 'limits.spec.ts', dependencies: ['global'] },
   ],
