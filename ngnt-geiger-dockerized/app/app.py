@@ -332,7 +332,8 @@ def reset_password(token):
             with db.cursor() as cur:
                 cur.execute("UPDATE users SET password_hash = %s, pw_version = pw_version + 1 WHERE id = %s",
                             (pw_hash, reset['user_id']))
-                cur.execute("UPDATE password_resets SET used = TRUE WHERE id = %s", (reset['id'],))
+                # This link and every other one the account was sent.
+                cur.execute("UPDATE password_resets SET used = TRUE WHERE user_id = %s", (reset['user_id'],))
             db.close()
             flash('Password reset. Please log in.', 'success')
             return redirect(url_for('login'))
@@ -609,6 +610,8 @@ def account():
                 with db.cursor() as cur:
                     cur.execute("UPDATE users SET password_hash = %s, pw_version = pw_version + 1 WHERE id = %s",
                                 (pw_hash, user_id))
+                    # A reset link sent before would set another password.
+                    cur.execute("UPDATE password_resets SET used = TRUE WHERE user_id = %s", (user_id,))
                 # Signs out the account's other sessions, not this one.
                 session['pw_version'] = session.get('pw_version', 0) + 1
                 # The bootstrap admin's first password is no longer valid: drop its file.

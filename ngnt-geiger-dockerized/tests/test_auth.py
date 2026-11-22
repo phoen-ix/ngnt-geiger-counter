@@ -304,6 +304,8 @@ def test_reset_password_post_success(client, mock_cursor):
     # Verify pw_version was incremented
     update_calls = [sql for sql, _ in mock_cursor.execute_log if 'pw_version' in sql]
     assert len(update_calls) == 1
+    # This link and every other one the account was sent are used up.
+    assert ('UPDATE password_resets SET used = TRUE WHERE user_id = %s', (1,)) in mock_cursor.execute_log
 
 
 def test_reset_password_post_too_short(client, mock_cursor):

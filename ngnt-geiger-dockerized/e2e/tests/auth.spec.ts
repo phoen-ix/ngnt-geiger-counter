@@ -2,7 +2,9 @@ import { randomBytes } from 'node:crypto'
 
 import { request } from '@playwright/test'
 
-import { BASE, PASSWORD, createUser, expect, flash, mailTo, postForm, q, sql, submitForm, test, uid } from './support'
+import {
+  BASE, PASSWORD, createUser, expect, flash, mailTo, postForm, q, resetLink, signIn, sql, submitForm, test, uid,
+} from './support'
 
 /* Register, sign in and out, forgot and reset password (mail through Mailpit). */
 
@@ -87,6 +89,7 @@ test.describe('sign in and out', () => {
     const user = createUser()
     await page.goto('/')
     await nav(page).getByRole('link', { name: 'Login' }).click()
+    await expect(page.getByRole('heading', { name: 'Login' })).toBeVisible()
     await submitForm(page, '/login', { Username: user.username, Password: PASSWORD }, 'Login')
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Devices' })).toBeVisible()
     await nav(page).getByRole('link', { name: 'Logout' }).click()
@@ -134,6 +137,26 @@ test.describe('password reset', () => {
     await expect(flash(page)).toHaveText('Logged in.')
 
     await page.goto(link!)
+    await expect(page).toHaveURL(/\/login$/)
+    await expect(flash(page)).toHaveText('Invalid or expired reset link.')
+  })
+
+  test('a password change ends the reset links sent before it', async ({ page, open }) => {
+    const user = createUser()
+    await submitForm(page, '/forgot-password', { Username: user.username }, 'Send Reset Link')
+    await expect(flash(page)).toHaveText('If that account exists and has an email, a reset link has been sent.')
+    const link = resetLink(await mailTo(user.email))
+
+    const account = await open(await signIn(user.username))
+    const newPassword = `new-${uid()}`
+    await account.goto('/account')
+    await account.getByLabel('Current password').fill(PASSWORD)
+    await account.getByLabel('New password', { exact: true }).fill(newPassword)
+    await account.getByLabel('Confirm new password').fill(newPassword)
+    await account.getByRole('button', { name: 'Change Password' }).click()
+    await expect(flash(account)).toHaveText('Password changed.')
+
+    await page.goto(link)
     await expect(page).toHaveURL(/\/login$/)
     await expect(flash(page)).toHaveText('Invalid or expired reset link.')
   })

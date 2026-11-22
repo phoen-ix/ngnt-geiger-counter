@@ -103,6 +103,8 @@ def test_change_password_success(auth_client, mock_cursor):
     update_calls = [sql for sql, _ in mock_cursor.execute_log
                     if 'pw_version' in sql and sql.strip().startswith('UPDATE')]
     assert len(update_calls) == 1
+    # A reset link sent before would set another password: all of the account's end.
+    assert ('UPDATE password_resets SET used = TRUE WHERE user_id = %s', (1,)) in mock_cursor.execute_log
 
 
 def test_change_password_wrong_current(auth_client, mock_cursor):

@@ -169,18 +169,21 @@ export function mqttPublish(
   }
 }
 
-/** The text of the newest mail Mailpit caught for `to`. */
-export async function mailTo(to: string): Promise<string> {
-  let id = ''
+/** The text of the newest mail Mailpit caught for `to`, once it caught `count` of them. */
+export async function mailTo(to: string, count = 1): Promise<string> {
+  let ids: string[] = []
   await expect
     .poll(async () => {
       const res = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`)
-      id = ((await res.json()).messages ?? [])[0]?.ID ?? ''
-      return id
-    }, { message: `mail to ${to}` })
-    .not.toBe('')
-  return (await (await fetch(`${MAIL}/api/v1/message/${id}`)).json()).Text
+      ids = ((await res.json()).messages ?? []).map((m: { ID: string }) => m.ID)
+      return ids.length
+    }, { message: `${count} mail(s) to ${to}` })
+    .toBeGreaterThanOrEqual(count)
+  return (await (await fetch(`${MAIL}/api/v1/message/${ids[0]}`)).json()).Text
 }
+
+/** The password-reset link in a reset mail. */
+export const resetLink = (mail: string) => /(http\S+\/reset-password\/[0-9a-f]{64})/.exec(mail)?.[1] ?? `no link in: ${mail}`
 
 const ORIGIN = new URL(BASE).origin
 
