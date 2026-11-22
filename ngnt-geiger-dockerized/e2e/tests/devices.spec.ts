@@ -1,7 +1,8 @@
 import { request } from '@playwright/test'
 
 import {
-  BASE, createDevice, createUser, expect, flash, mqttCredentials, postForm, q, randomMac, signIn, sql, test,
+  ADMIN_STATE, BASE, createDevice, createUser, expect, flash, mqttCredentials, mqttPublish, postForm, q, randomMac,
+  signIn, sql, test,
 } from './support'
 
 /* The devices page: register, rename and delete counters, the no-pepper state,
@@ -39,19 +40,24 @@ test('a malformed MAC is refused, in the browser and by the server', async ({ op
   await mac.evaluate((el) => el.removeAttribute('pattern'))
   await page.getByRole('button', { name: 'Register Device' }).click()
   await expect(flash(page)).toHaveText('Invalid MAC address format. Use AA:BB:CC:DD:EE:FF.')
+  await expect(mac).toHaveValue('5C:CF:7F:3A:91')
   expect(sql(`SELECT COUNT(*) FROM devices WHERE user_id = ${user.id};`)).toBe('0')
 })
 
-test('a MAC whose device ID is taken, by anyone, is refused', async ({ open }) => {
+test('a MAC whose device ID is taken, by anyone, is refused; the form keeps what was typed', async ({ open }) => {
   const other = createUser()
   const taken = createDevice(other)
   const user = createUser()
   const page = await open(await signIn(user.username))
   await page.goto('/devices')
   await page.getByLabel('MAC Address').fill(taken.mac)
+  await page.getByLabel('Display Name (optional)').fill('Garden')
   await page.getByRole('button', { name: 'Register Device' }).click()
   await expect(flash(page)).toHaveText(`Device ${taken.id} already registered.`)
   await expect(page.getByText('No devices registered yet.')).toBeVisible()
+  // What was typed stays, to correct it.
+  await expect(page.getByLabel('MAC Address')).toHaveValue(taken.mac)
+  await expect(page.getByLabel('Display Name (optional)')).toHaveValue('Garden')
 })
 
 test('without a pepper there is no form, only a link to the account page', async ({ open }) => {
@@ -117,23 +123,68 @@ test('delete a device after confirming; cancelling keeps it', async ({ open }) =
   expect(sql(`SELECT COUNT(*) FROM devices WHERE device_id = ${q(id)};`)).toBe('0')
 })
 
-test("only your own devices are listed, and another user's cannot be renamed or deleted", async ({ open }) => {
+test("another user and an admin can neither see, rename nor delete someone's counter; it keeps logging in", async ({ open }) => {
   const owner = createUser()
-  const theirs = createDevice(owner, { name: 'Not yours' })
-  const dbId = sql(`SELECT id FROM devices WHERE device_id = ${q(theirs.id)};`)
+  const page = await open(await signIn(owner.username))
+  const register = async (mac: string) => {
+    await page.goto('/devices')
+    await page.getByLabel('MAC Address').fill(mac)
+    await page.getByRole('button', { name: 'Register Device' }).click()
+    await expect(flash(page)).toHaveText(`Device ${mqttCredentials(mac, owner.pepper!).id} registered and provisioned.`)
+  }
+  const mac = randomMac()
+  const counter = mqttCredentials(mac, owner.pepper!)
+  await register(mac)
+  await page.getByRole('row').filter({ hasText: counter.id }).getByRole('textbox').fill('Not yours')
+  await page.getByRole('row').filter({ hasText: counter.id }).getByRole('button', { name: 'Save' }).click()
+  await expect(flash(page)).toHaveText('Device updated.')
+  await expect.poll(() => mqttPublish(counter.id, counter.password, { id: counter.id, status: 'connected' }).ok).toBe(true)
+  const dbId = sql(`SELECT id FROM devices WHERE device_id = ${q(counter.id)};`)
+
+  for (const [who, state] of [['another user', await signIn(createUser().username)], ['an admin', ADMIN_STATE]] as const) {
+    const other = await open(state)
+    await other.goto('/devices')
+    await expect(other.getByRole('heading', { name: 'Your Devices' })).toBeVisible()
+    await expect(other.getByRole('row').filter({ hasText: counter.id })).toHaveCount(0)
+    // No button leads there; a forged form does (its token from the account page: an
+    // admin without a pepper and counters has no form on /devices).
+    const api = await request.newContext({ baseURL: BASE, storageState: state })
+    for (const form of [
+      { action: 'update_device', device_db_id: dbId, display_name: 'Hijacked' },
+      { action: 'delete_device', device_db_id: dbId },
+    ] as Record<string, string>[]) {
+      const res = await postForm(api, '/devices', form, '/account')
+      expect(res.status(), `${who}: ${form.action}`).toBe(200)
+      expect(await res.text(), `${who}: ${form.action}`).toContain('Device not found.')
+    }
+    await api.dispose()
+  }
+  expect(sql(`SELECT display_name FROM devices WHERE device_id = ${q(counter.id)};`)).toBe('Not yours')
+  // Mosquitto reloads its logins every 5 s: once a counter registered after
+  // those posts logs in, a removed login would be gone too.
+  const later = randomMac()
+  const laterDev = mqttCredentials(later, owner.pepper!)
+  await register(later)
+  await expect.poll(() => mqttPublish(laterDev.id, laterDev.password, { id: laterDev.id, status: 'connected' }).ok).toBe(true)
+  expect(mqttPublish(counter.id, counter.password, { id: counter.id, status: 'connected' }).ok).toBe(true)
+})
+
+test('a counter deleted in another tab cannot be renamed there', async ({ open }) => {
   const user = createUser()
-  const mine = createDevice(user, { name: 'Mine' })
+  const dev = createDevice(user, { name: 'Stale' })
   const state = await signIn(user.username)
+  const stale = await open(state)
+  await stale.goto('/devices')
   const page = await open(state)
   await page.goto('/devices')
-  await expect(page.getByRole('row').filter({ hasText: mine.id })).toBeVisible()
-  await expect(page.getByRole('row').filter({ hasText: theirs.id })).toHaveCount(0)
+  page.once('dialog', (d) => d.accept())
+  await page.getByRole('row').filter({ hasText: dev.id }).getByRole('button', { name: 'Delete' }).click()
+  await expect(flash(page)).toHaveText('Device deleted and unprovisioned.')
 
-  const api = await request.newContext({ baseURL: BASE, storageState: state })
-  await postForm(api, '/devices', { action: 'update_device', device_db_id: dbId, display_name: 'Hijacked' })
-  await postForm(api, '/devices', { action: 'delete_device', device_db_id: dbId })
-  await api.dispose()
-  expect(sql(`SELECT display_name FROM devices WHERE device_id = ${q(theirs.id)};`)).toBe('Not yours')
+  await stale.getByRole('row').filter({ hasText: dev.id }).getByRole('textbox').fill('Renamed')
+  await stale.getByRole('row').filter({ hasText: dev.id }).getByRole('button', { name: 'Save' }).click()
+  await expect(flash(stale)).toHaveText('Device not found.')
+  await expect(stale.getByRole('row').filter({ hasText: dev.id })).toHaveCount(0)
 })
 
 test('a display name over 100 characters is refused, not a server error', async ({ open }) => {
@@ -151,7 +202,7 @@ test('a display name over 100 characters is refused, not a server error', async 
   for (const form of [
     { action: 'add_device', mac_address: randomMac(), display_name: 'x'.repeat(101) },
     { action: 'update_device', device_db_id: dbId, display_name: 'x'.repeat(101) },
-  ]) {
+  ] as Record<string, string>[]) {
     const res = await postForm(api, '/devices', form)
     expect(res.status(), form.action).toBe(200)
     expect(await res.text()).toContain('Display name can be at most 100 characters.')

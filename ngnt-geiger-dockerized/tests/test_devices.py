@@ -72,11 +72,10 @@ def test_startup_drops_the_plaintext_password_column(app_instance, mock_cursor):
     assert any('INSERT IGNORE INTO settings' in sql and 'smtp_ehlo_name' in sql for sql, _ in mock_cursor.execute_log)
 
 
+# A refused add shows the page at once, the form keeping what was typed: before_request +
+# pepper (+ duplicate check) + settings + device list, no redirect.
+
 def test_add_device_invalid_mac(auth_client, mock_cursor):
-    # POST: before_request + pepper check
-    queue_before_request(mock_cursor)
-    mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
-    # Redirect to GET /devices: before_request + pepper + settings + device list
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
     queue_settings(mock_cursor)
@@ -85,16 +84,15 @@ def test_add_device_invalid_mac(auth_client, mock_cursor):
     resp = auth_client.post('/devices', data={
         'action': 'add_device',
         'mac_address': 'not-a-mac',
-        'display_name': '',
-    }, follow_redirects=True)
+        'display_name': 'Kitchen',
+    })
+    assert resp.status_code == 200
     assert b'Invalid MAC address' in resp.data
+    assert b'value="not-a-mac"' in resp.data
+    assert b'value="Kitchen"' in resp.data
 
 
 def test_add_device_no_pepper(auth_client, mock_cursor):
-    # POST: before_request + pepper check
-    queue_before_request(mock_cursor)
-    mock_cursor.add_response(fetchone={'pepper': None})
-    # Redirect to GET /devices: before_request + pepper + settings + device list
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': None})
     queue_settings(mock_cursor)
@@ -103,27 +101,24 @@ def test_add_device_no_pepper(auth_client, mock_cursor):
         'action': 'add_device',
         'mac_address': 'AA:BB:CC:DD:EE:FF',
         'display_name': '',
-    }, follow_redirects=True)
+    })
     assert b'Set a pepper' in resp.data
 
 
 def test_add_device_duplicate(auth_client, mock_cursor):
-    # POST: before_request + pepper + duplicate check
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
     mock_cursor.add_response(fetchone={'id': 99})
-    # Redirect to GET /devices: before_request + pepper + settings + device list
-    queue_before_request(mock_cursor)
-    mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
     queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
 
     resp = auth_client.post('/devices', data={
         'action': 'add_device',
-        'mac_address': 'AA:BB:CC:DD:EE:FF',
+        'mac_address': 'aa:bb:cc:dd:ee:ff',
         'display_name': '',
-    }, follow_redirects=True)
+    })
     assert b'already registered' in resp.data
+    assert b'value="aa:bb:cc:dd:ee:ff"' in resp.data
 
 
 # ── Update device ───────────────────────────────────────────────────────────
@@ -131,7 +126,8 @@ def test_add_device_duplicate(auth_client, mock_cursor):
 def test_update_device_success(auth_client, mock_cursor):
     queue_before_request(mock_cursor)
     mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
-    # UPDATE (no fetch)
+    # SELECT the user's device → found; UPDATE (no fetch)
+    mock_cursor.add_response(fetchone={'device_id': 'geiger_aabbcc'})
 
     resp = auth_client.post('/devices', data={
         'action': 'update_device',
@@ -147,6 +143,23 @@ def test_update_device_success(auth_client, mock_cursor):
     assert len(update_calls) == 1
     sql, params = update_calls[0]
     assert 'user_id' in sql
+
+
+def test_update_device_not_yours(auth_client, mock_cursor):
+    queue_before_request(mock_cursor)
+    mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    mock_cursor.add_response(fetchone=None)  # not among the user's devices
+
+    resp = auth_client.post('/devices', data={
+        'action': 'update_device',
+        'device_db_id': '7',
+        'display_name': 'Hijacked',
+    })
+    assert resp.status_code == 302
+    assert ('SELECT device_id FROM devices WHERE id = %s AND user_id = %s', ('7', 1)) in mock_cursor.execute_log
+    assert not [sql for sql, _ in mock_cursor.execute_log if sql.startswith('UPDATE devices')]
+    with auth_client.session_transaction() as sess:
+        assert sess['_flashes'] == [('error', 'Device not found.')]
 
 
 # ── Delete device ───────────────────────────────────────────────────────────

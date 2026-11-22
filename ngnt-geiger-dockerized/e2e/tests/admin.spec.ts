@@ -107,15 +107,24 @@ test('a user cannot open or post to the admin page', async ({ open }) => {
   await expect(page).toHaveURL(/\/$/)
 
   const victim = createUser()
+  const settings = () => sql("SELECT GROUP_CONCAT(`key`, '=', `value` ORDER BY `key`) FROM settings;")
+  const before = settings()
   const api = await request.newContext({ baseURL: BASE, storageState: USER_STATE })
   const token = /name="csrf_token" value="([^"]+)"/.exec(await (await api.get('/account')).text())![1]
-  for (const action of ['toggle_role', 'delete_user']) {
-    const res = await api.post('/admin', { form: { csrf_token: token, action, target_user_id: String(victim.id) }, maxRedirects: 0 })
-    expect(res.status()).toBe(302)
-    expect(res.headers().location).toBe('/')
+  for (const form of [
+    { action: 'toggle_role', target_user_id: String(victim.id) },
+    { action: 'toggle_public', target_user_id: String(victim.id) },
+    { action: 'delete_user', target_user_id: String(victim.id) },
+    { action: 'save_settings', registration_enabled: '0', session_timeout_minutes: '1' },
+    { action: 'save_smtp', smtp_host: 'smtp.attacker.example' },
+  ] as Record<string, string>[]) {
+    const res = await api.post('/admin', { form: { csrf_token: token, ...form }, maxRedirects: 0 })
+    expect(res.status(), form.action).toBe(302)
+    expect(res.headers().location, form.action).toBe('/')
   }
   await api.dispose()
-  expect(sql(`SELECT role FROM users WHERE id = ${victim.id};`)).toBe('user')
+  expect(sql(`SELECT role, public FROM users WHERE id = ${victim.id};`)).toBe('user\t0')
+  expect(settings()).toBe(before)
 })
 
 test('a malformed user id is refused', async () => {

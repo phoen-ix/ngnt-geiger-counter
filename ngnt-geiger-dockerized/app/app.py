@@ -494,23 +494,24 @@ def devices():
 
     if request.method == 'POST':
         action = request.form.get('action')
+        refused = None  # why the add form was refused: shown with what was typed
 
         if action == 'add_device':
             mac = request.form.get('mac_address', '').strip().upper()
             display_name = request.form.get('display_name', '').strip() or None
 
             if not re.match(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$', mac):
-                flash('Invalid MAC address format. Use AA:BB:CC:DD:EE:FF.', 'error')
+                refused = 'Invalid MAC address format. Use AA:BB:CC:DD:EE:FF.'
             elif display_name and len(display_name) > 100:
-                flash('Display name can be at most 100 characters.', 'error')
+                refused = 'Display name can be at most 100 characters.'
             elif not user_pepper:
-                flash('Set a pepper in your account settings first.', 'error')
+                refused = 'Set a pepper in your account settings first.'
             else:
                 device_id, mqtt_password = derive_mqtt_credentials(mac, user_pepper)
                 with db.cursor() as cur:
                     cur.execute("SELECT id FROM devices WHERE device_id = %s", (device_id,))
                     if cur.fetchone():
-                        flash(f'Device {device_id} already registered.', 'error')
+                        refused = f'Device {device_id} already registered.'
                     else:
                         cur.execute(
                             "INSERT INTO devices (user_id, device_id, mac_address, display_name, provisioned) "
@@ -520,36 +521,37 @@ def devices():
                         provision_device(device_id, mqtt_password)
                         flash(f'Device {device_id} registered and provisioned.', 'success')
 
-        elif action == 'update_device':
+        elif action in ('update_device', 'delete_device'):
             device_db_id = request.form.get('device_db_id')
             display_name = request.form.get('display_name', '').strip() or None
-            if display_name and len(display_name) > 100:
-                flash('Display name can be at most 100 characters.', 'error')
-            else:
-                with db.cursor() as cur:
-                    cur.execute(
-                        "UPDATE devices SET display_name = %s WHERE id = %s AND user_id = %s",
-                        (display_name, device_db_id, user_id),
-                    )
-                flash('Device updated.', 'success')
-
-        elif action == 'delete_device':
-            device_db_id = request.form.get('device_db_id')
             with db.cursor() as cur:
                 cur.execute(
                     "SELECT device_id FROM devices WHERE id = %s AND user_id = %s",
                     (device_db_id, user_id),
                 )
                 dev = cur.fetchone()
-                if dev:
+                if not dev:
+                    # Another user's, or deleted in another tab.
+                    flash('Device not found.', 'error')
+                elif action == 'delete_device':
                     unprovision_device(dev['device_id'])
                     cur.execute("DELETE FROM devices WHERE id = %s AND user_id = %s", (device_db_id, user_id))
                     flash('Device deleted and unprovisioned.', 'success')
+                elif display_name and len(display_name) > 100:
+                    flash('Display name can be at most 100 characters.', 'error')
+                else:
+                    cur.execute(
+                        "UPDATE devices SET display_name = %s WHERE id = %s AND user_id = %s",
+                        (display_name, device_db_id, user_id),
+                    )
+                    flash('Device updated.', 'success')
 
-        db.close()
-        return redirect(url_for('devices'))
+        if not refused:
+            db.close()
+            return redirect(url_for('devices'))
+        flash(refused, 'error')
 
-    # GET
+    # GET, or a refused add: the form keeps what was typed (request.form)
     display_tz = get_settings(db).get('display_timezone', 'Europe/Vienna')
     with db.cursor() as cur:
         cur.execute("SELECT * FROM devices WHERE user_id = %s ORDER BY device_id", (user_id,))
