@@ -11,6 +11,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from itsdangerous import BadSignature
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from helpers import (
@@ -30,7 +31,15 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ['FLASK_SECRET_KEY']
 csrf = CSRFProtect(app)
+# The client's address: the peer's, or behind a reverse proxy the one exactly TRUSTED_PROXY_HOPS
+# proxies back in X-Forwarded-For (what the client wrote in front of it is not believed).
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=int(os.environ.get('TRUSTED_PROXY_HOPS', '0')), x_proto=0)
 limiter = Limiter(get_remote_address, app=app, storage_uri="memory://", default_limits=[])
+
+
+def address_and_account():
+    """Rate-limit key: one person mistyping their password locks out nobody else behind the same address."""
+    return f"{get_remote_address()}/{request.form.get('username', '').strip().lower()}"
 
 
 # ── Template context ─────────────────────────────────────────────────────────
@@ -200,7 +209,8 @@ def is_device_online(device: dict, offline_timeout: int) -> bool:
 # ── Auth routes ──────────────────────────────────────────────────────────────
 
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("10/minute", methods=["POST"])
+@limiter.limit("10/minute", methods=["POST"], key_func=address_and_account,
+               deduct_when=lambda response: response.status_code == 200)  # failed: the form again
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -279,7 +289,7 @@ def logout():
 
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
-@limiter.limit("5/minute", methods=["POST"])
+@limiter.limit("5/minute", methods=["POST"], key_func=address_and_account)  # the account's address gets the mail
 def forgot_password():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()

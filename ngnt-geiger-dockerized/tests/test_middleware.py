@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from itsdangerous import TimestampSigner
+from werkzeug.security import generate_password_hash
 
 from tests.testutils import queue_settings
 
@@ -188,24 +189,72 @@ def test_csrf_rejects_without_token(app_instance, mock_cursor):
 
 # ── Rate limiting ───────────────────────────────────────────────────────────
 
-def test_rate_limiting_enforced(app_instance, mock_cursor):
-    """Rate limiting should reject excessive login attempts."""
+@pytest.fixture
+def limited(app_instance, mock_cursor):
+    """POST/GET as a new browser from `ip` (the peer, or the address a proxy put in
+    X-Forwarded-For) with the rate limits on; returns the status."""
     import app as app_module
     app_instance.config['RATELIMIT_ENABLED'] = True
+    app_module.limiter.reset()
 
-    try:
-        # Reset limiter storage for a clean test
-        app_module.limiter.reset()
-
+    def send(path, form=None, ip=None, user=None):
+        if path == '/forgot-password' and form:
+            queue_settings(mock_cursor)
+        if path in ('/login', '/forgot-password') and form:
+            mock_cursor.add_response(fetchone=user)  # the account named in the form
+        headers = {'X-Forwarded-For': ip} if ip else {}
         with app_instance.test_client() as c:
-            # Login fails return 200 (re-render form), so we can keep posting
-            for _ in range(10):
-                mock_cursor.add_response(fetchone=None)  # user not found
-                c.post('/login', data={'username': 'x', 'password': 'y'})
-
-            # 11th attempt should be rate limited
-            mock_cursor.add_response(fetchone=None)
-            resp = c.post('/login', data={'username': 'x', 'password': 'y'})
-            assert resp.status_code == 429
+            return (c.post(path, data=form, headers=headers) if form else c.get(path, headers=headers)).status_code
+    try:
+        yield send
     finally:
         app_instance.config['RATELIMIT_ENABLED'] = False
+
+
+def _fail(name='alice'):
+    return {'username': name, 'password': 'wrong'}
+
+
+def test_failed_sign_ins_are_counted_per_ip_and_account(limited):
+    assert [limited('/login', _fail()) for _ in range(10)] == [200] * 10
+    assert limited('/login', _fail()) == 429
+    assert limited('/login', _fail(' ALICE ')) == 429  # the same account
+    # Someone else behind the same address signs in as usual.
+    assert limited('/login', _fail('bob')) == 200
+
+
+def test_page_views_and_successful_sign_ins_do_not_count(limited):
+    alice = {'id': 2, 'username': 'alice', 'role': 'user', 'pw_version': 0,
+             'password_hash': generate_password_hash('right', method='pbkdf2:sha256:1000')}
+    assert {limited('/login') for _ in range(15)} == {200}
+    assert {limited('/login', {'username': 'alice', 'password': 'right'}, user=alice) for _ in range(15)} == {302}
+    assert [limited('/login', _fail()) for _ in range(10)] == [200] * 10
+    assert limited('/login', _fail()) == 429
+
+
+def test_reset_requests_are_counted_per_ip_and_account(limited):
+    assert [limited('/forgot-password', {'username': 'alice'}) for _ in range(5)] == [302] * 5
+    assert limited('/forgot-password', {'username': 'alice'}) == 429
+    assert limited('/forgot-password', {'username': 'bob'}) == 302
+
+
+def test_without_proxy_hops_x_forwarded_for_is_ignored(limited):
+    # TRUSTED_PROXY_HOPS=0 (the default): the peer address counts, whatever the client claims.
+    for i in range(10):
+        limited('/login', _fail(), ip=f'203.0.113.{i}')
+    assert limited('/login', _fail(), ip='198.51.100.7') == 429
+
+
+def test_behind_the_configured_proxy_each_client_address_is_counted(app_instance, limited, monkeypatch):
+    monkeypatch.setattr(app_instance.wsgi_app, 'x_for', 1)  # TRUSTED_PROXY_HOPS=1
+    for _ in range(10):
+        limited('/login', _fail(), ip='203.0.113.1')
+    assert limited('/login', _fail(), ip='203.0.113.1') == 429
+    assert limited('/login', _fail(), ip='203.0.113.2') == 200
+    # The proxy appends the address it saw: what the client put in front is not trusted.
+    assert limited('/login', _fail(), ip='203.0.113.2, 203.0.113.1') == 429
+
+
+def test_the_proxy_hops_come_from_the_environment(app_instance):
+    # Exactly the configured hops; nothing else a proxy sends is trusted.
+    assert (app_instance.wsgi_app.x_for, app_instance.wsgi_app.x_proto, app_instance.wsgi_app.x_host) == (0, 0, 0)

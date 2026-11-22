@@ -4,7 +4,7 @@ The admin's tasks in the web dashboard, plus backups, upgrades and a reset of th
 
 Audience: users with the **admin** role, and whoever runs the server. Installing the stack: [README](../README.md#server-quick-start). Everyday use (dashboard, adding a counter): [user guide](user-guide.md). Every screen: [screenshot gallery](screenshots/README.md).
 
-**Contents:** [What admins can do](#what-admins-can-do) · [First sign-in](#first-sign-in) · [Global settings](#global-settings) · [Password-reset email (SMTP)](#password-reset-email-smtp) · [Managing users](#managing-users) · [Who sees which counters](#who-sees-which-counters) · [Backups](#backups) · [Upgrading](#upgrading) · [Reset](#reset)
+**Contents:** [What admins can do](#what-admins-can-do) · [First sign-in](#first-sign-in) · [Global settings](#global-settings) · [Password-reset email (SMTP)](#password-reset-email-smtp) · [Managing users](#managing-users) · [Who sees which counters](#who-sees-which-counters) · [Sign-in limits and a reverse proxy](#sign-in-limits-and-a-reverse-proxy) · [Backups](#backups) · [Upgrading](#upgrading) · [Reset](#reset)
 
 ## What admins can do
 
@@ -83,6 +83,20 @@ You can't edit another user's email, pepper or password. A user who forgot their
 | Admins | Every counter |
 
 New accounts start private. **Devices** always lists only your own counters, also for admins.
+
+## Sign-in limits and a reverse proxy
+
+The forms that try passwords or send mail are limited per client address:
+
+| Form | Limit | What counts |
+|------|-------|-------------|
+| **Login** | 10 a minute | Failed sign-ins, per address and account. A sign-in that works, or opening the page, never counts. |
+| **Forgot password** | 5 a minute | Requests, per address and account. |
+| **Register** | 5 a minute | Sign-ups, per address. |
+
+Past the limit the form answers **429 Too Many Requests** until the minute is over. So one person mistyping their password locks out nobody else in the same home or office. Each of the web app's two workers counts on its own, and a restart forgets the counts.
+
+**Behind a reverse proxy** (nginx, Traefik, Caddy, …) every request arrives from the proxy's address. Set `TRUSTED_PROXY_HOPS` in `.env` to the number of proxies in front of the app that add `X-Forwarded-For` (one proxy: `1`), then `docker compose up -d`. The app then takes the address the outermost proxy saw. Leave it at `0` (the default) when browsers reach port 1880 directly: with a higher value anyone could name their own address in that header.
 
 ## Backups
 

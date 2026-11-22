@@ -41,11 +41,12 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
   vendored there as `chart.umd.js` (the npm package's `dist/chart.umd.js`). Never add an inline `<script>`, an
   `on…=` attribute or a third-party URL to a template: `tests/test_csp.py` and the e2e guard fail on it.
 - E2E: every test owns its users/devices (`uid()`, SQL in `e2e/tests/support.ts`; the dashboard's device filter
-  only renders with two visible counters, so a test that reads it creates both); every sign-in goes through
-  `signIn()`/`submitForm()`, which wait out the login/register/forgot-password rate limits (one IP for the whole
-  suite). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores the defaults);
-  `limits.spec.ts` runs last; every other spec runs in `main` without being listed. `repeat.spec.ts` does each
-  repeatable action twice in a row. `scripts/e2e.sh` first type-checks and lints `e2e/` (`npm run lint`:
+  only renders with two visible counters, so a test that reads it creates both); sign-ins go through
+  `signIn()`/`submitForm()`. Failed sign-ins and reset requests are limited per address and account, so a test's
+  own accounts never meet them; only registering (5/min per address, one address for the whole suite) waits out
+  a 429 (`auth.spec.ts`). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores
+  the defaults); `limits.spec.ts` runs last; every other spec runs in `main` without being listed. `repeat.spec.ts`
+  does each repeatable action twice in a row. `scripts/e2e.sh` first type-checks and lints `e2e/` (`npm run lint`:
   `tsc` + `no-floating-promises`).
 - Test hygiene: `tests/test_e2e_hygiene.py` scans every e2e and pytest file for steps a person would not take
   (sleeps, forced or synthetic events, actions inside `expect.poll`/loops, page scripts that change the page);

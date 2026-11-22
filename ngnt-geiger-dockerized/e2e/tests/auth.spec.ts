@@ -10,15 +10,22 @@ import {
 
 const nav = (page: import('@playwright/test').Page) => page.getByRole('navigation')
 
+/** Registration allows 5 a minute per address (and gunicorn worker), and the whole
+ * suite is one address: a 429 waits for the next window and submits again. */
+const register = (page: import('@playwright/test').Page, fields: Record<string, string>) =>
+  expect
+    .poll(() => submitForm(page, '/register', fields, 'Register'), { message: 'register rate limit', intervals: [5_000], timeout: 75_000 })
+    .not.toBe(429)
+
 test.describe('register', () => {
   test('a new account can sign in', async ({ page }) => {
     const username = `reg_${uid()}`
-    await submitForm(page, '/register', {
+    await register(page, {
       Username: username,
       'Email (optional)': `${username}@geiger-e2e.example`,
       Password: PASSWORD,
       'Confirm password': PASSWORD,
-    }, 'Register')
+    })
     await expect(page).toHaveURL(/\/login$/)
     await expect(flash(page)).toHaveText('Account created. Please log in.')
 
@@ -43,7 +50,7 @@ test.describe('register', () => {
     ]
     for (const [override, message] of cases) {
       const fields = { Username: `reg_${uid()}`, Password: PASSWORD, 'Confirm password': PASSWORD, ...override }
-      await submitForm(page, '/register', fields, 'Register')
+      await register(page, fields)
       await expect(page).toHaveURL(/\/register$/)
       await expect(flash(page)).toHaveText(message)
       await expect(page.getByLabel('Username')).toHaveValue(fields.Username)

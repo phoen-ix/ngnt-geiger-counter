@@ -44,11 +44,9 @@ UNIT_RULES = {
 
 # (file relative to ngnt-geiger-dockerized/, rule) -> (count, why it is not a workaround).
 E2E_ALLOWED = {
-    ('e2e/tests/support.ts', 'retry-action'): (
-        2, 'signIn() and submitForm() post again after a 429: the whole suite is one IP against the '
-           'sign-in rate limits (owner decision X4 on limits behind a proxy)'),
     ('e2e/tests/auth.spec.ts', 'retry-action'): (
-        1, 'posts an over-long email again after a 429, as submitForm does (one IP for the suite)'),
+        2, 'registration allows 5 a minute per address and the whole suite is one address: the register '
+           'form, and a post past its email maxlength, go again after a 429'),
     ('e2e/tests/mqtt.spec.ts', 'retry-action'): (
         8, 'Mosquitto picks up new logins by a 5-s poll, so a counter connects until accepted as the '
            'firmware does; the devices page has no live update, so a person reloads it'),
@@ -60,8 +58,6 @@ E2E_ALLOWED = {
         4, 'a counter connects until Mosquitto took its login in, or until its removal reached it'),
     ('e2e/tests/devices.spec.ts', 'script-state'): (
         1, "drops the MAC field's pattern to reach the server's own check; a forged post would do too"),
-    ('e2e/tests/limits.spec.ts', 'until-loop'): (
-        1, 'posts until the rate limit answers 429: the limit is the subject'),
     ('e2e/docs/tour.spec.ts', 'script-state'): (
         3, 'screenshot preparation: Chart.js animation off, a select measured at max-content and '
            'put back, the page scrolled to the top before a shot'),

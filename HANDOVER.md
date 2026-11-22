@@ -213,7 +213,7 @@ Single-file Flask app with all routes. Key components:
 
 **CSRF protection:** All POST forms include a `csrf_token` hidden field. Flask-WTF's `CSRFProtect` validates every POST request automatically.
 
-**Rate limiting:** Flask-Limiter protects auth endpoints — login (10/min), register (5/min), forgot-password (5/min). Uses in-memory storage (per-worker). No default limits on other routes.
+**Rate limiting:** Flask-Limiter on the POSTs of the auth endpoints: login 10 failed sign-ins/min per client address and account (a sign-in that works doesn't count), forgot-password 5/min per address and account, register 5/min per address. The client address is the peer's, or with `TRUSTED_PROXY_HOPS=n` the one n reverse proxies back in `X-Forwarded-For` (werkzeug `ProxyFix`, nothing else from the proxy is trusted). In-memory storage (per worker). No default limits on other routes.
 
 **Session security (`before_request`):** On every authenticated request, one query reads `pw_version`, `role` and the `session_timeout_minutes` setting. A DB error is logged and the session kept (an outage logs nobody out). If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login. The session timeout is checked against the cookie's signature age there (Flask's own check runs before the setting is read, against what the worker last set) and applied to the renewed cookie via `app.permanent_session_lifetime`.
 

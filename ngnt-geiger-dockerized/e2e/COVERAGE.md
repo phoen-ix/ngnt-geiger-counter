@@ -13,7 +13,7 @@ grep -n "flash(" app/app.py                                       # messages / e
 grep -n "elif msg.get\|if 'cpm' in msg" scripts/pm2/mqtt_bro_impulses.py   # 3 MQTT message kinds
 ```
 
-**134 items: 130 ✅, 4 ❌ (3 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
+**136 items: 131 ✅, 5 ❌ (4 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
 `main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`.
 
 ## Routes × roles (breadth)
@@ -67,9 +67,11 @@ no 5xx, no request leaving the stack.
 | Session ends when the user is deleted | ✅ `admin › delete a user after confirming: devices unprovisioned, their session ends` |
 | Role change applies without signing in again | ✅ `admin › promote a user to admin and back; the role applies without signing in again` |
 | Session lifetime = session timeout setting (an idle session ends on every worker: `tests/test_middleware.py`) | ✅ `global › the session timeout sets how long a sign-in lasts` |
-| Rate limit: login 10/min → 429 | ✅ `limits › POST /login answers 429 after 10 a minute` |
+| Rate limit: login 10 failed sign-ins/min per address and account → 429 (a sign-in that works and page views don't count: `tests/test_middleware.py`) | ✅ `limits › POST /login answers 429 after 10 a minute` |
 | Rate limit: register 5/min → 429 | ✅ `limits › POST /register answers 429 after 5 a minute` |
-| Rate limit: forgot-password 5/min → 429 | ✅ `limits › POST /forgot-password answers 429 after 5 a minute` |
+| Rate limit: forgot-password 5/min per address and account → 429 | ✅ `limits › POST /forgot-password answers 429 after 5 a minute` |
+| An account at its login or reset limit locks out nobody else at the same address | ✅ `limits › an account at its sign-in or reset limit locks out nobody else at the same address` |
+| Behind a reverse proxy: the client address from `TRUSTED_PROXY_HOPS` proxies back, a client's own `X-Forwarded-For` not believed | ❌ (c) `tests/test_middleware.py::test_behind_the_configured_proxy_each_client_address_is_counted` (the e2e stack has no proxy) |
 | CSRF: POST without token → 400 | ✅ `limits › a form posted without its CSRF token is refused` |
 | Bootstrap admin: random first password in `data/`, removed after the change | ✅ `setup › admin password, SMTP to Mailpit, shared sessions` (reads it, changes it, the file is gone) |
 

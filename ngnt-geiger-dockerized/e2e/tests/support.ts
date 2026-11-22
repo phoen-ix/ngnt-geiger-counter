@@ -122,21 +122,13 @@ export async function postForm(
   return api.post(path, { form: { csrf_token: token, ...form } })
 }
 
-/** Signs in through the login form and returns the session. The login allows
- * 10 POSTs a minute per worker and every test shares one IP: a 429 waits for
- * the next window instead of failing. */
+/** Signs in through the login form and returns the session. A sign-in that
+ * works never counts against the login limit. */
 export async function signIn(username: string, password = PASSWORD) {
   const api = await request.newContext({ baseURL: BASE })
   try {
-    let res: APIResponse | undefined
-    await expect
-      .poll(async () => (res = await postForm(api, '/login', { username, password })).status(), {
-        message: 'login rate limit',
-        intervals: [5_000],
-        timeout: 75_000,
-      })
-      .not.toBe(429)
-    expect(new URL(res!.url()).pathname, `sign in as ${username}`).toBe('/')
+    const res = await postForm(api, '/login', { username, password })
+    expect(new URL(res.url()).pathname, `sign in as ${username}`).toBe('/')
     return await api.storageState()
   } finally {
     await api.dispose()
@@ -270,26 +262,15 @@ export { expect }
 
 export const flash = (page: Page) => page.locator('body > .success, body > .error')
 
-/** Opens `path`, fills its fields (by label) and presses `button`. On the
- * rate-limited forms (login 10/min, register and forgot-password 5/min, per
- * worker, one IP for the whole suite) a 429 waits for the next window and
- * submits again. Returns the POST's response status. */
+/** Opens `path`, fills its fields (by label) and presses `button`. Returns the
+ * POST's response status once the answer has loaded. */
 export async function submitForm(page: Page, path: string, fields: Record<string, string>, button: string) {
-  let status = 0
-  await expect
-    .poll(
-      async () => {
-        await page.goto(path)
-        for (const [label, value] of Object.entries(fields)) await page.getByLabel(label, { exact: true }).fill(value)
-        const [res] = await Promise.all([
-          page.waitForResponse((r) => r.request().method() === 'POST'),
-          page.getByRole('button', { name: button, exact: true }).click(),
-        ])
-        await page.waitForLoadState()
-        return (status = res.status())
-      },
-      { message: 'rate limit', intervals: [5_000], timeout: 75_000 },
-    )
-    .not.toBe(429)
-  return status
+  await page.goto(path)
+  for (const [label, value] of Object.entries(fields)) await page.getByLabel(label, { exact: true }).fill(value)
+  const [res] = await Promise.all([
+    page.waitForResponse((r) => r.request().method() === 'POST'),
+    page.getByRole('button', { name: button, exact: true }).click(),
+  ])
+  await page.waitForLoadState()
+  return res.status()
 }
