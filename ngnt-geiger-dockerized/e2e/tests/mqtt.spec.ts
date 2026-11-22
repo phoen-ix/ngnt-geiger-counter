@@ -25,8 +25,8 @@ test('register, connect, measure, go offline, delete', async ({ open }) => {
   await expect.poll(() => mqttPublish(id, password, { id, status: 'connected' }).ok, { message: 'provisioned in Mosquitto' }).toBe(true)
   expect(mqttPublish(id, 'wrong-password', { id, status: 'connected' }).out).toContain('not authorised')
   const row = page.getByRole('row').filter({ hasText: id })
-  await expect.poll(async () => (await page.reload(), (await row.getByRole('cell').nth(3).textContent())?.trim())).toBe('online')
-  await expect(row.getByRole('cell').nth(4)).not.toHaveText('—')
+  await expect.poll(async () => (await page.reload(), (await row.getByRole('cell').nth(4).textContent())?.trim())).toBe('online')
+  await expect(row.getByRole('cell').nth(5)).not.toHaveText('—')
 
   // Reconnected: "connected" and the pending reading within the same second.
   expect(mqttPublish(id, password, [{ id, status: 'connected' }, { id, ts: utcNow(), cpm: 31, usvh: 0.1767 }]).ok).toBe(true)
@@ -39,7 +39,7 @@ test('register, connect, measure, go offline, delete', async ({ open }) => {
   // The broker's last will for the counter.
   expect(mqttPublish(id, password, { id, status: 'offline' }).ok).toBe(true)
   await page.goto('/devices')
-  await expect.poll(async () => (await page.reload(), (await row.getByRole('cell').nth(3).textContent())?.trim())).toBe('offline')
+  await expect.poll(async () => (await page.reload(), (await row.getByRole('cell').nth(4).textContent())?.trim())).toBe('offline')
 
   page.once('dialog', (d) => d.accept())
   await row.getByRole('button', { name: 'Delete' }).click()

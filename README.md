@@ -29,7 +29,7 @@ Step by step: [user guide](docs/user-guide.md) (account, dashboard, adding your 
 
 - **Dashboard**: latest CPM and dose rate, online status, a chart over the last hour, 6 hours, 24 hours or 7 days and the latest 100 readings. Reloads every 60 s and fits a phone.
 - **Device filter**: with two or more visible counters, one counter's readings at a time.
-- **Alert colour**: the dose-rate card turns orange above the alert threshold (admin setting, default 0.5 µSv/h).
+- **Alert colour**: the dose-rate card turns orange above the counter's alert threshold (set by its owner on **Devices**, else the admin's default, 0.5 µSv/h).
 - **Visibility**: each user's counters are public or private; see [who sees which counters](docs/admin-guide.md#who-sees-which-counters).
 - **Accounts**: registration (admins can close it), password reset by email, and a password change that signs out your other sessions.
 - **Device provisioning**: register a counter by its MAC; Mosquitto accepts it within 5 seconds.

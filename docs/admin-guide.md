@@ -42,7 +42,7 @@ The name in the header and in emails is `SITE_NAME` in `.env`, not an admin sett
 | **Display Timezone** | `Europe/Vienna` | Timestamps on the dashboard, **Devices** and the user list. A tz database name such as `Europe/Berlin`. |
 | **Offline Timeout (minutes)** | `5` | A counter shows as offline when its last message is older than this, or when the broker reported it gone. |
 | **Default CPM Factor** | `0.0057` | Greyed out: each counter converts CPM to µSv/h itself (**CPM Factor** in its setup portal). |
-| **Default Alert Threshold (μSv/h)** | `0.5` | Above this the dashboard's **Dose rate** card turns orange. |
+| **Default Alert Threshold (μSv/h)** | `0.5` | Above this the dashboard's **Dose rate** card turns orange, for every counter whose owner set no threshold of its own on **Devices**. |
 | **Session Timeout (minutes)** | `1440` | How long a sign-in lasts after the user's last page load. |
 | **Registration** | **Open** | **Disabled**: the **Register** page sends visitors back to the login page with **Registration is currently disabled.** |
 

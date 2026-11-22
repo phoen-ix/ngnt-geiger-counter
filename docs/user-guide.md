@@ -47,7 +47,7 @@ The page always answers **If that account exists and has an email, a reset link 
 - **Which counters:** visitors see the counters of users with a public profile; signed in, you also see your own; admins see all.
 - **Range:** **Last hour**, **Last 6 hours**, **Last 24 hours** (default) or **Last 7 days** sets the chart and the table.
 - **Device:** with two or more counters visible, pick one in the **Device** dropdown, or **All devices**.
-- **Cards:** **CPM** (counts per minute) and **Dose rate** (µSv/h) of the newest reading; the dose rate turns orange above the alert threshold (0.5 µSv/h unless the admin changed it). **Device** names the counter and says **online** (green) or **offline** (orange). **Readings stored** counts the readings in the range, up to 100; more show as **100+**.
+- **Cards:** **CPM** (counts per minute) and **Dose rate** (µSv/h) of the newest reading; the dose rate turns orange above the counter's alert threshold (yours on **Devices**, else the admin's default, 0.5 µSv/h unless changed). **Device** names the counter and says **online** (green) or **offline** (orange). **Readings stored** counts the readings in the range, up to 100; more show as **100+**.
 - **Table:** the newest 100 readings of the range, in the admin's display timezone.
 
 The page reloads every 60 seconds. A counter counts as offline when it has sent nothing for longer than the admin's offline timeout (5 minutes by default) or the broker has reported it gone; its cards keep the last reading:
@@ -123,6 +123,7 @@ The setup portal opens again only when the counter can't reach its saved WiFi at
 On **Devices**, under **Your Devices**:
 
 - **Rename:** change the **Display Name** and click **Save**. Leave it empty to show the device ID instead.
+- **Alert threshold:** under **Alert above (µSv/h)** enter the dose rate above which this counter's **Dose rate** card turns orange, and click **Save** (or press Enter). Leave it empty for the admin's default, shown greyed out in the field.
 - **Remove:** click **Delete** and confirm. The broker no longer accepts the counter, and it disappears from the dashboard. If you register it again, its earlier readings show up again.
 
 **Status** and **Last Seen** show when the counter last reported, in the admin's display timezone.

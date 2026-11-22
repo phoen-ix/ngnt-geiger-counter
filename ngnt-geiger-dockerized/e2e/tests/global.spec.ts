@@ -65,7 +65,7 @@ test('the display timezone applies to dashboard and devices dates', async ({ ope
   await expect(flash(admin)).toHaveText('Settings saved.')
   const page = await open(await signIn(user.username))
   await page.goto('/devices')
-  await expect(page.getByRole('row').filter({ hasText: dev.id }).getByRole('cell').nth(4)).toHaveText('2026-07-01 04:30:00')
+  await expect(page.getByRole('row').filter({ hasText: dev.id }).getByRole('cell').nth(5)).toHaveText('2026-07-01 04:30:00')
   await page.goto(`/?device=${dev.id}`)
   const utc = sql(`SELECT measured_at FROM measurements WHERE device_id = '${dev.id}';`)
   const ny = new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString('sv-SE', { timeZone: 'America/New_York' })

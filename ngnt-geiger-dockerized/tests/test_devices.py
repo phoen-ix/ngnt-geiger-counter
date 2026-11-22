@@ -1,6 +1,9 @@
 """Tests for device management routes — CRUD + provisioning."""
 
+import re
 from unittest.mock import patch
+
+import pytest
 
 from tests.testutils import queue_before_request, queue_settings
 
@@ -160,6 +163,46 @@ def test_update_device_not_yours(auth_client, mock_cursor):
     assert not [sql for sql, _ in mock_cursor.execute_log if sql.startswith('UPDATE devices')]
     with auth_client.session_transaction() as sess:
         assert sess['_flashes'] == [('error', 'Device not found.')]
+
+
+@pytest.mark.parametrize('typed, stored', [('0.05', 0.05), (' 2 ', 2.0), ('0', 0.0), ('', None)])
+def test_update_device_sets_its_alert_threshold(auth_client, mock_cursor, typed, stored):
+    queue_before_request(mock_cursor)
+    mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    mock_cursor.add_response(fetchone={'device_id': 'geiger_aabbcc'})
+    auth_client.post('/devices', data={
+        'action': 'update_device', 'device_db_id': '1', 'display_name': 'Shed', 'alert_threshold': typed})
+    assert [params for sql, params in mock_cursor.execute_log if sql.startswith('UPDATE devices')] == [
+        ('Shed', stored, '1', 1)]
+
+
+@pytest.mark.parametrize('typed', ['abc', '-0.1', 'nan', 'inf', '1e999'])
+def test_update_device_refuses_an_alert_threshold_that_is_no_number_of_at_least_0(auth_client, mock_cursor, typed):
+    queue_before_request(mock_cursor)
+    mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    mock_cursor.add_response(fetchone={'device_id': 'geiger_aabbcc'})
+    auth_client.post('/devices', data={
+        'action': 'update_device', 'device_db_id': '1', 'display_name': 'Shed', 'alert_threshold': typed})
+    assert not [sql for sql, _ in mock_cursor.execute_log if sql.startswith('UPDATE devices')]
+    with auth_client.session_transaction() as sess:
+        assert sess['_flashes'] == [('error', 'Alert threshold must be a number of at least 0.')]
+
+
+def test_devices_page_shows_each_alert_threshold_and_the_default(auth_client, mock_cursor):
+    queue_before_request(mock_cursor)
+    mock_cursor.add_response(fetchone={'pepper': 'mysecret'})
+    queue_settings(mock_cursor, default_alert_threshold='0.7')
+    mock_cursor.add_response(fetchall=[
+        {'id': 1, 'device_id': 'geiger_aabbcc', 'display_name': None, 'mac_address': 'AA:BB:CC:DD:EE:FF',
+         'status': 'offline', 'last_seen': None, 'provisioned': True, 'alert_threshold': 0.05},
+        {'id': 2, 'device_id': 'geiger_ddeeff', 'display_name': None, 'mac_address': 'AA:BB:CC:DD:EE:FE',
+         'status': 'offline', 'last_seen': None, 'provisioned': True, 'alert_threshold': None},
+    ])
+    page = auth_client.get('/devices').data.decode()
+    fields = re.findall(r'<input type="number" name="alert_threshold"[^>]*>', page)
+    assert len(fields) == 2
+    assert 'value="0.05"' in fields[0] and 'value=""' in fields[1]
+    assert all('placeholder="0.7"' in f for f in fields)
 
 
 # ── Delete device ───────────────────────────────────────────────────────────

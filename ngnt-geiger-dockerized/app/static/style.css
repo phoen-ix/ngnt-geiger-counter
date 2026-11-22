@@ -146,7 +146,7 @@ th {
     border-bottom: 1px solid #30363d;
 }
 /* Units keep their case: uppercase would turn μSv/h into "MSV/H". */
-th.unit { text-transform: none; }
+th.unit, th .unit { text-transform: none; }
 td {
     padding: 7px 14px;
     font-size: 0.85rem;
@@ -219,7 +219,7 @@ tr:hover td { background: #1c2129; }
     outline: none;
     border-color: #58a6ff;
 }
-td input[type="text"] {
+td input[type="text"], td input[type="number"] {
     background: #0d1117;
     border: 1px solid #30363d;
     border-radius: 4px;

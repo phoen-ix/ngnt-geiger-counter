@@ -44,6 +44,7 @@
             <tr>
                 <th>Device ID</th>
                 <th>Display Name</th>
+                <th>Alert above <span class="unit">(&mu;Sv/h)</span></th>
                 <th>MAC</th>
                 <th>Status</th>
                 <th>Last Seen</th>
@@ -56,13 +57,21 @@
             <tr>
                 <td>{{ dev['device_id'] }}</td>
                 <td>
-                    <form method="post" style="display:flex;gap:6px;">
+                    <form method="post" id="update-{{ dev['id'] }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="action" value="update_device">
                         <input type="hidden" name="device_db_id" value="{{ dev['id'] }}">
                         <input type="text" name="display_name" maxlength="100" value="{{ dev['display_name'] or '' }}" placeholder="{{ dev['device_id'] }}">
-                        <button type="submit" class="btn-sm">Save</button>
                     </form>
+                </td>
+                <td>
+                    <div style="display:flex;gap:6px;">
+                        {#- Empty: the admin's default threshold applies (the placeholder). #}
+                        <input type="number" name="alert_threshold" form="update-{{ dev['id'] }}" min="0" step="any"
+                               value="{{ dev['alert_threshold'] if dev['alert_threshold'] is not none else '' }}"
+                               placeholder="{{ default_alert }}" aria-label="Alert threshold (&mu;Sv/h)">
+                        <button type="submit" form="update-{{ dev['id'] }}" class="btn-sm">Save</button>
+                    </div>
                 </td>
                 <td style="font-size:0.78rem;color:#6e7681;">{{ dev['mac_address'] }}</td>
                 <td class="{{ 'status-online' if dev['status'] == 'online' else 'status-offline' }}">

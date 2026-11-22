@@ -83,15 +83,15 @@ export function createUser(opts: { pepper?: string | null; public?: boolean; rol
 /** A device row as Flask's add_device writes it, without provisioning Mosquitto. */
 export function createDevice(
   user: User,
-  opts: { name?: string | null; status?: 'online' | 'offline'; lastSeenMinutesAgo?: number; alert?: number } = {},
+  opts: { name?: string | null; status?: 'online' | 'offline'; lastSeenMinutesAgo?: number } = {},
 ) {
   const mac = randomMac()
   const { id } = mqttCredentials(mac, user.pepper ?? 'none')
   const lastSeen = opts.lastSeenMinutesAgo == null ? 'NULL' : `UTC_TIMESTAMP() - INTERVAL ${opts.lastSeenMinutesAgo} MINUTE`
   sql(
-    `INSERT INTO devices (user_id, device_id, mac_address, display_name, status, last_seen, alert_threshold, provisioned) ` +
+    `INSERT INTO devices (user_id, device_id, mac_address, display_name, status, last_seen, provisioned) ` +
       `VALUES (${user.id}, ${q(id)}, ${q(mac)}, ${q(opts.name === undefined ? `Counter ${id.slice(-6)}` : opts.name)}, ` +
-      `${q(opts.status ?? 'offline')}, ${lastSeen}, ${opts.alert ?? 'NULL'}, TRUE);`,
+      `${q(opts.status ?? 'offline')}, ${lastSeen}, TRUE);`,
   )
   return { id, mac, name: opts.name === undefined ? `Counter ${id.slice(-6)}` : opts.name }
 }

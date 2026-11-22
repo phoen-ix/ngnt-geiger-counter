@@ -1,4 +1,4 @@
-import { ADMIN_STATE, addReadings, createDevice, createUser, expect, q, signIn, sql, test, uid } from './support'
+import { ADMIN_STATE, addReadings, createDevice, createUser, expect, flash, q, signIn, sql, test, uid } from './support'
 
 /* The dashboard: who sees which counters, the device filter, the time ranges,
  * the cards (latest reading, alert colour, online state, count), the chart,
@@ -95,15 +95,22 @@ test('the time ranges: each lists the readings inside it', async ({ open }) => {
   await expect(page.locator('meta[http-equiv="refresh"]')).toHaveAttribute('content', `60;url=?range=6h&device=${dev.id}`)
 })
 
-test('cards: dose rate turns orange above the alert threshold; 100+ readings', async ({ open }) => {
+test("cards: dose rate turns orange above the counter's own alert threshold, set on Devices; 100+ readings", async ({ open }) => {
   const user = createUser()
   const calm = createDevice(user)
-  const hot = createDevice(user, { alert: 0.05 })
+  const hot = createDevice(user)
   const hundred = createDevice(user)
   addReadings(calm.id, [{ minutesAgo: 1, cpm: 20 }])
   addReadings(hot.id, Array.from({ length: 120 }, (_, i) => ({ minutesAgo: i + 1, cpm: 20 })))
   addReadings(hundred.id, Array.from({ length: 100 }, (_, i) => ({ minutesAgo: i + 1, cpm: 20 })))
   const page = await open(await signIn(user.username))
+  // 0.1140 µSv/h is below the default threshold (0.5): the owner sets a lower one for this counter.
+  await page.goto('/devices')
+  const hotRow = page.getByRole('row').filter({ hasText: hot.id })
+  await hotRow.getByLabel('Alert threshold').fill('0.05')
+  await hotRow.getByRole('button', { name: 'Save' }).click()
+  await expect(flash(page)).toHaveText('Device updated.')
+  await expect(hotRow.getByLabel('Alert threshold')).toHaveValue('0.05')
 
   await page.goto(`/?device=${calm.id}`)
   await expect(card(page, 'Dose rate').locator('.card-value')).toHaveText('0.1140')

@@ -5,7 +5,7 @@ import {
   signIn, sql, test,
 } from './support'
 
-/* The devices page: register, rename and delete counters, the no-pepper state,
+/* The devices page: register, rename and delete counters, their alert threshold, the no-pepper state,
  * and that nobody can touch another user's devices. Provisioning reaching
  * Mosquitto is mqtt.spec.ts. */
 
@@ -21,7 +21,7 @@ test('register a device: credentials derived like the firmware, listed as not ye
   await expect(flash(page)).toHaveText(`Device ${id} registered and provisioned.`)
 
   const row = page.getByRole('row').filter({ hasText: id })
-  await expect(row.getByRole('cell')).toHaveText([id, 'Save', mac, 'offline', '—', 'Yes', 'Delete'])
+  await expect(row.getByRole('cell')).toHaveText([id, '', 'Save', mac, 'offline', '—', 'Yes', 'Delete'])
   await expect(row.getByRole('textbox')).toHaveValue('Rooftop')
   expect(sql(`SELECT mac_address FROM devices WHERE device_id = ${q(id)};`)).toBe(mac)
   // The derived password goes to Mosquitto only, as a hash (mqtt.spec.ts logs in with it), never into the DB.
@@ -97,6 +97,45 @@ test('rename a device, and clear its name back to the device ID', async ({ open 
   expect(sql(`SELECT display_name IS NULL FROM devices WHERE device_id = ${q(dev.id)};`)).toBe('1')
 })
 
+test("a counter's alert threshold: set, cleared back to the default, refused unless a number of at least 0", async ({ open }) => {
+  const user = createUser()
+  const dev = createDevice(user)
+  const dbId = sql(`SELECT id FROM devices WHERE device_id = ${q(dev.id)};`)
+  const stored = () => sql(`SELECT IFNULL(alert_threshold, 'default') FROM devices WHERE device_id = ${q(dev.id)};`)
+  const state = await signIn(user.username)
+  const page = await open(state)
+  await page.goto('/devices')
+  const row = page.getByRole('row').filter({ hasText: dev.id })
+  const alert = row.getByLabel('Alert threshold')
+  // Empty: the admin's default applies, and the field says which.
+  await expect(alert).toHaveValue('')
+  await expect(alert).toHaveAttribute('placeholder', '0.5')
+
+  await alert.fill('0.25')
+  await alert.press('Enter')
+  await expect(flash(page)).toHaveText('Device updated.')
+  await expect(alert).toHaveValue('0.25')
+  expect(stored()).toBe('0.25')
+
+  await alert.fill('')
+  await row.getByRole('button', { name: 'Save' }).click()
+  await expect(flash(page)).toHaveText('Device updated.')
+  await expect(alert).toHaveValue('')
+  expect(stored()).toBe('default')
+
+  // The browser stops a negative number; past it, as a script would post it, the server refuses.
+  await alert.fill('-1')
+  await row.getByRole('button', { name: 'Save' }).click()
+  expect(await alert.evaluate((el: HTMLInputElement) => el.validity.rangeUnderflow)).toBe(true)
+  const api = await request.newContext({ baseURL: BASE, storageState: state })
+  for (const typed of ['-1', 'abc', 'inf']) {
+    const res = await postForm(api, '/devices', { action: 'update_device', device_db_id: dbId, display_name: '', alert_threshold: typed })
+    expect(await res.text(), typed).toContain('Alert threshold must be a number of at least 0.')
+  }
+  await api.dispose()
+  expect(stored()).toBe('default')
+})
+
 test('delete a device after confirming; cancelling keeps it', async ({ open }) => {
   const user = createUser()
   const page = await open(await signIn(user.username))
@@ -150,7 +189,7 @@ test("another user and an admin can neither see, rename nor delete someone's cou
     // admin without a pepper and counters has no form on /devices).
     const api = await request.newContext({ baseURL: BASE, storageState: state })
     for (const form of [
-      { action: 'update_device', device_db_id: dbId, display_name: 'Hijacked' },
+      { action: 'update_device', device_db_id: dbId, display_name: 'Hijacked', alert_threshold: '9' },
       { action: 'delete_device', device_db_id: dbId },
     ] as Record<string, string>[]) {
       const res = await postForm(api, '/devices', form, '/account')
@@ -159,7 +198,7 @@ test("another user and an admin can neither see, rename nor delete someone's cou
     }
     await api.dispose()
   }
-  expect(sql(`SELECT display_name FROM devices WHERE device_id = ${q(counter.id)};`)).toBe('Not yours')
+  expect(sql(`SELECT display_name, alert_threshold IS NULL FROM devices WHERE device_id = ${q(counter.id)};`)).toBe('Not yours\t1')
   // Mosquitto reloads its logins every 5 s: once a counter registered after
   // those posts logs in, a removed login would be gone too.
   const later = randomMac()

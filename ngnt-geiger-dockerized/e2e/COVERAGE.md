@@ -13,7 +13,7 @@ grep -n "flash(" app/app.py                                       # messages / e
 grep -n "elif msg.get\|if 'cpm' in msg" scripts/pm2/mqtt_bro_impulses.py   # 3 MQTT message kinds
 ```
 
-**136 items: 131 ✅, 5 ❌ (4 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
+**137 items: 132 ✅, 5 ❌ (4 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
 `main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`.
 
 ## Routes × roles (breadth)
@@ -91,8 +91,8 @@ no 5xx, no request leaving the stack.
 | Ranges 1 h / 6 h / 24 h / 7 d: active tab, headings, table rows, chart points | ✅ `the time ranges: each lists the readings inside it` |
 | Unknown range → 24 h | ✅ same |
 | Auto-refresh every 60 s with range and device | ✅ same (`meta refresh`) |
-| Cards: CPM, dose rate (4 decimals), readings count, "100+" only above 100, and 100 rows max | ✅ `cards: dose rate turns orange above the alert threshold; 100+ readings` |
-| Dose rate orange above the device's alert threshold | ✅ same |
+| Cards: CPM, dose rate (4 decimals), readings count, "100+" only above 100, and 100 rows max | ✅ `cards: dose rate turns orange above the counter's own alert threshold, set on Devices; 100+ readings` |
+| Dose rate orange above the counter's own alert threshold, set by its owner on Devices | ✅ same |
 | Dose rate orange above the default alert threshold | ✅ `global › the offline timeout and the default alert threshold change the dashboard cards` |
 | Device card online / offline (status + last seen within the offline timeout) | ✅ `online means status online and seen within the offline timeout` |
 | Offline timeout setting changes it | ✅ `global › the offline timeout and the default alert threshold change the dashboard cards` |
@@ -113,9 +113,10 @@ no 5xx, no request leaving the stack.
 | Delete a counter and register the same MAC again; it logs in again | ✅ `repeat › delete a counter and register the same MAC again; it logs in again` |
 | No pepper: no form, link to account; server refuses the POST | ✅ `devices › without a pepper there is no form, only a link to the account page` |
 | Rename; clear name → device ID placeholder | ✅ `devices › rename a device, and clear its name back to the device ID` |
+| Alert threshold per counter: set (Enter), cleared back to the admin's default (the placeholder), a negative number stopped by the browser, no number of at least 0 refused by the server | ✅ `devices › a counter's alert threshold: set, cleared back to the default, refused unless a number of at least 0` |
 | Display name over 100 characters, add and rename (was a 500) | ✅ `devices › a display name over 100 characters is refused, not a server error` |
 | Delete: confirm dialog text, cancel keeps it, accept deletes | ✅ `devices › delete a device after confirming; cancelling keeps it` |
-| Another user and an admin: not listed, rename and delete refused ("Device not found."), the counter keeps logging in | ✅ `devices › another user and an admin can neither see, rename nor delete someone's counter; it keeps logging in` |
+| Another user and an admin: not listed, rename (with an alert threshold) and delete refused ("Device not found."), the counter keeps logging in | ✅ `devices › another user and an admin can neither see, rename nor delete someone's counter; it keeps logging in` |
 | Renaming a counter deleted in another tab → "Device not found." | ✅ `devices › a counter deleted in another tab cannot be renamed there` |
 | Last seen in the display timezone | ✅ `global › the display timezone applies to dashboard and devices dates` |
 | Provisioning reaches Mosquitto (devices.conf + reload): derived credentials accepted over TLS, wrong ones refused | ✅ `mqtt › register, connect, measure, go offline, delete` |

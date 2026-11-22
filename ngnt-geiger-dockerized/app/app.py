@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import re
 import secrets
@@ -534,6 +535,13 @@ def devices():
         elif action in ('update_device', 'delete_device'):
             device_db_id = request.form.get('device_db_id')
             display_name = request.form.get('display_name', '').strip() or None
+            # Above this dose rate the counter's card turns orange; empty: the admin's default.
+            alert = request.form.get('alert_threshold', '').strip()
+            try:
+                alert = float(alert) if alert else None
+                alert_ok = alert is None or (math.isfinite(alert) and alert >= 0)
+            except ValueError:
+                alert_ok = False
             with db.cursor() as cur:
                 cur.execute(
                     "SELECT device_id FROM devices WHERE id = %s AND user_id = %s",
@@ -549,10 +557,12 @@ def devices():
                     flash('Device deleted and unprovisioned.', 'success')
                 elif display_name and len(display_name) > 100:
                     flash('Display name can be at most 100 characters.', 'error')
+                elif not alert_ok:
+                    flash('Alert threshold must be a number of at least 0.', 'error')
                 else:
                     cur.execute(
-                        "UPDATE devices SET display_name = %s WHERE id = %s AND user_id = %s",
-                        (display_name, device_db_id, user_id),
+                        "UPDATE devices SET display_name = %s, alert_threshold = %s WHERE id = %s AND user_id = %s",
+                        (display_name, alert, device_db_id, user_id),
                     )
                     flash('Device updated.', 'success')
 
@@ -562,7 +572,8 @@ def devices():
         flash(refused, 'error')
 
     # GET, or a refused add: the form keeps what was typed (request.form)
-    display_tz = get_settings(db).get('display_timezone', 'Europe/Vienna')
+    settings = get_settings(db)
+    display_tz = settings.get('display_timezone', 'Europe/Vienna')
     with db.cursor() as cur:
         cur.execute("SELECT * FROM devices WHERE user_id = %s ORDER BY device_id", (user_id,))
         user_devices = cur.fetchall()
@@ -571,7 +582,8 @@ def devices():
             dev['last_seen'] = utc_to_local(dev['last_seen'], display_tz)
 
     db.close()
-    return render_template('devices.html', devices=user_devices, user_pepper=user_pepper)
+    return render_template('devices.html', devices=user_devices, user_pepper=user_pepper,
+                           default_alert=settings.get('default_alert_threshold', '0.5'))
 
 
 # ── Account ──────────────────────────────────────────────────────────────────

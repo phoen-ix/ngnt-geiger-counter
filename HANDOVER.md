@@ -149,6 +149,7 @@ CREATE TABLE devices (
 - Devices are registered via the web UI, not auto-created by the subscriber.
 - The subscriber only does `UPDATE` (no INSERT) — unregistered devices are ignored.
 - `ON DELETE CASCADE` ensures user deletion cleans up devices.
+- `alert_threshold`: set by the owner on `/devices` (a number ≥ 0; empty = NULL: the `default_alert_threshold` setting applies). The dashboard's dose-rate card turns orange above it. `cpm_factor` has no UI (the firmware applies its own).
 - No password column: the MQTT password is derived from MAC + pepper whenever it is needed. v3.0–3.5 stored it in plaintext in `mqtt_password` (never read); `migrate_schema()` drops that column on start.
 
 ### `password_resets` table
