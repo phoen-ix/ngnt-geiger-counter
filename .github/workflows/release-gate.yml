@@ -1,0 +1,20 @@
+# Release gate (owner decision 2026-11-22): tag only a commit whose fleet e2e run was green with no flaky
+# test. fleet posts that verdict as the commit status fleet/e2e (`fleet gate <repo> <sha> --post`).
+name: Release gate
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  statuses: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: fleet/e2e passed on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status" --jq '[.statuses[] | select(.context == "fleet/e2e")][0].state // "missing"')
+          echo "fleet/e2e on $GITHUB_SHA: $state"
+          [ "$state" = success ] || { echo "::error::tag only a commit whose fleet e2e run was green, 0 flaky (fleet gate <repo> <sha>)"; exit 1; }
