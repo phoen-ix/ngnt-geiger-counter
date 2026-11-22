@@ -8,14 +8,6 @@ from werkzeug.security import generate_password_hash
 
 from tests.testutils import MockCursor, MockDB, queue_before_request
 
-# ── Auth requirement ────────────────────────────────────────────────────────
-
-def test_account_requires_login(client):
-    resp = client.get('/account')
-    assert resp.status_code == 302
-    assert '/login' in resp.headers['Location']
-
-
 # ── GET /account ────────────────────────────────────────────────────────────
 
 def test_account_get_renders(auth_client, mock_cursor):

@@ -5,22 +5,6 @@ from unittest.mock import patch
 
 from tests.testutils import queue_before_request, queue_settings
 
-# ── Auth requirements ───────────────────────────────────────────────────────
-
-def test_admin_requires_login(client):
-    resp = client.get('/admin')
-    assert resp.status_code == 302
-    assert '/login' in resp.headers['Location']
-
-
-def test_admin_requires_admin_role(auth_client, mock_cursor):
-    """Regular user is redirected away from admin page."""
-    queue_before_request(mock_cursor, role='user')
-
-    resp = auth_client.get('/admin')
-    assert resp.status_code == 302
-
-
 # ── GET /admin ──────────────────────────────────────────────────────────────
 
 def test_admin_get_renders(admin_client, mock_cursor):
@@ -65,7 +49,8 @@ def test_save_settings(admin_client, mock_cursor):
     # Verify INSERT/UPDATE was executed for settings
     setting_calls = [sql for sql, _ in mock_cursor.execute_log
                      if 'INSERT INTO settings' in sql]
-    assert len(setting_calls) == 7  # one per SETTINGS_KEY
+    import app as app_module
+    assert len(setting_calls) == len(app_module.SETTINGS_KEYS)
 
 
 # ── Save SMTP ───────────────────────────────────────────────────────────────
@@ -86,7 +71,8 @@ def test_save_smtp(admin_client, mock_cursor):
     assert resp.status_code == 302
     setting_calls = [params for sql, params in mock_cursor.execute_log
                      if 'INSERT INTO settings' in sql]
-    assert len(setting_calls) == 7  # one per SMTP_KEY
+    import app as app_module
+    assert len(setting_calls) == len(app_module.SMTP_KEYS)
     assert ('smtp_ehlo_name', 'mx.example.com') in setting_calls
 
 

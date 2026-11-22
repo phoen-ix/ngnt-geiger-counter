@@ -42,9 +42,7 @@ def _queue_dashboard_responses(cursor, devices, measurements=None):
         # Latest measurement (fetchone)
         latest = measurements[0] if measurements else None
         cursor.add_response(fetchone=latest)
-        # Chart data (fetchall)
-        cursor.add_response(fetchall=measurements or [])
-        # Recent measurements (fetchall)
+        # Chart data (fetchall); the table is its newest 100 rows
         cursor.add_response(fetchall=measurements or [])
 
 
@@ -76,8 +74,10 @@ def test_dashboard_logged_in_own_and_public(auth_client, mock_cursor):
 
     resp = auth_client.get('/')
     assert resp.status_code == 200
-    assert b'geiger_own' in resp.data
-    assert b'geiger_pub' in resp.data
+    # The mock returns these whatever the SQL: the query is what decides.
+    sql, params = mock_cursor.execute_log[2]
+    assert 'WHERE d.user_id = %s OR u.public = TRUE' in sql
+    assert params == (1,)
 
 
 # ── Admin visibility ────────────────────────────────────────────────────────
@@ -150,21 +150,28 @@ def test_dashboard_range_invalid_defaults_24h(client, mock_cursor):
 
 # ── Device filter ───────────────────────────────────────────────────────────
 
+def _measurement_params(cursor):
+    return [params for sql, params in cursor.execute_log if 'FROM measurements' in sql]
+
+
 def test_dashboard_device_filter(client, mock_cursor):
-    """?device=geiger_aabbcc filters to that device."""
+    """?device=geiger_aabbcc reads only that device's readings and selects it."""
     queue_settings(mock_cursor)
-    dev = _make_device(device_id='geiger_aabbcc')
-    _queue_dashboard_responses(mock_cursor, [dev], [_make_measurement()])
+    devs = [_make_device(device_id='geiger_aabbcc'), _make_device(device_id='geiger_112233')]
+    _queue_dashboard_responses(mock_cursor, devs, [_make_measurement()])
 
     resp = client.get('/?device=geiger_aabbcc')
-    assert resp.status_code == 200
+    assert _measurement_params(mock_cursor) == [['geiger_aabbcc']] * 2
+    assert b'<option value="geiger_aabbcc" selected>' in resp.data
 
 
 def test_dashboard_device_filter_invalid_ignored(client, mock_cursor):
-    """Invalid device param falls back to 'all'."""
+    """A device that is not visible falls back to all visible ones."""
     queue_settings(mock_cursor)
-    dev = _make_device(device_id='geiger_aabbcc')
-    _queue_dashboard_responses(mock_cursor, [dev], [_make_measurement()])
+    devs = [_make_device(device_id='geiger_aabbcc'), _make_device(device_id='geiger_112233')]
+    _queue_dashboard_responses(mock_cursor, devs, [_make_measurement()])
 
-    resp = client.get('/?device=nonexistent')
-    assert resp.status_code == 200
+    resp = client.get('/?device=geiger_private')
+    assert _measurement_params(mock_cursor) == [['geiger_aabbcc', 'geiger_112233']] * 2
+    assert b'<option value="all" selected>' in resp.data
+    assert b'geiger_private' not in resp.data

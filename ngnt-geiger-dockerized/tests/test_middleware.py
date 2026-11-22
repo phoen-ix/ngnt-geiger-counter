@@ -157,7 +157,7 @@ def test_before_request_db_error_keeps_session(client, mock_cursor, app_instance
 
 # ── before_request: skips static ────────────────────────────────────────────
 
-def test_before_request_skips_static(client):
+def test_before_request_skips_static(client, mock_cursor):
     """Requests to static files should not trigger DB queries."""
     with client.session_transaction() as sess:
         sess['user_id'] = 1
@@ -165,11 +165,9 @@ def test_before_request_skips_static(client):
         sess['role'] = 'user'
         sess['pw_version'] = 0
 
-    # If before_request tried to call get_db, the mock_cursor has no responses
-    # queued, which would be fine (returns None). But we verify no execute was called.
     resp = client.get('/static/style.css')
-    # Static file may or may not exist in tests, but before_request should skip it
-    assert resp.status_code in (200, 404)
+    assert resp.status_code == 200
+    assert mock_cursor.execute_log == []
 
 
 # ── CSRF protection ─────────────────────────────────────────────────────────

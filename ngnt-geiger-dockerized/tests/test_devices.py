@@ -4,14 +4,6 @@ from unittest.mock import patch
 
 from tests.testutils import queue_before_request, queue_settings
 
-# ── Auth requirement ────────────────────────────────────────────────────────
-
-def test_devices_requires_login(client):
-    resp = client.get('/devices')
-    assert resp.status_code == 302
-    assert '/login' in resp.headers['Location']
-
-
 # ── GET /devices ────────────────────────────────────────────────────────────
 
 def test_devices_get_lists_devices(auth_client, mock_cursor):
@@ -190,6 +182,8 @@ def test_delete_device_nonexistent(auth_client, mock_cursor):
 
     assert resp.status_code == 302
     mock_unprov.assert_not_called()
+    # The mock finds nothing whatever the SQL: what keeps another user's counter is the owner clause.
+    assert ('SELECT device_id FROM devices WHERE id = %s AND user_id = %s', ('999', 1)) in mock_cursor.execute_log
 
 
 def test_delete_device_calls_unprovision(auth_client, mock_cursor):

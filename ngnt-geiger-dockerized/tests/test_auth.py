@@ -251,8 +251,11 @@ def test_forgot_password_nonexistent_user(client, mock_cursor):
     mock_cursor.add_response(fetchone=None)
 
     resp = client.post('/forgot-password', data={'username': 'nonexistent'})
-    assert resp.status_code == 302
-    # Same success message always shown (anti-enumeration)
+    # Only the message an account with an email gets (anti-enumeration), and no token.
+    assert resp.headers['Location'] == '/login'
+    with client.session_transaction() as sess:
+        assert sess['_flashes'] == [('success', 'If that account exists and has an email, a reset link has been sent.')]
+    assert not [sql for sql, _ in mock_cursor.execute_log if 'INSERT INTO password_resets' in sql]
 
 
 def test_forgot_password_cleans_expired_tokens(client, mock_cursor):
