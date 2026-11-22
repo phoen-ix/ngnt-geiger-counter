@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from datetime import datetime
 
 import aiomqtt
 import aiomysql
@@ -23,6 +24,21 @@ MQTT_PASS      = os.getenv('MQTT_PYTHON_USERPW')
 
 BATCH_MAX_SIZE    = 50    # flush after this many rows
 BATCH_MAX_SECONDS = 5.0   # or after this many seconds, whichever comes first
+
+
+# ── Reading validation ───────────────────────────────────────────────────────
+def reading(msg: dict) -> tuple[str, int, float] | None:
+    """(ts, cpm, usvh) as the measurements table takes them, or None. A counter may send
+    anything, and one value MariaDB refuses fails the whole batch it is written in."""
+    try:
+        ts, cpm, usvh = msg['ts'], int(msg['cpm']), float(msg['usvh'])
+        datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')  # the firmware's UTC.dateTime("Y-m-d H:i:s")
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    # cpm is an INT, usvh a FLOAT column; NaN and infinity fail the second test too.
+    if -2**31 <= cpm < 2**31 and abs(usvh) < 3.4e38:
+        return ts, cpm, usvh
+    return None
 
 
 # ── Device status update ─────────────────────────────────────────────────────
@@ -61,29 +77,22 @@ async def batch_writer(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
     db_backoff = 1
     while True:
         try:
-            row = await asyncio.wait_for(queue.get(), timeout=BATCH_MAX_SECONDS)
-            batch.append(row)
-            queue.task_done()
-
+            batch.append(await asyncio.wait_for(queue.get(), timeout=BATCH_MAX_SECONDS))
             # drain any further items already waiting in the queue
-            while len(batch) < BATCH_MAX_SIZE:
-                try:
-                    batch.append(queue.get_nowait())
-                    queue.task_done()
-                except asyncio.QueueEmpty:
-                    break
-
-            if len(batch) >= BATCH_MAX_SIZE:
-                await flush(pool, batch)
-                batch = []
-                db_backoff = 1
-
+            while len(batch) < BATCH_MAX_SIZE and not queue.empty():
+                batch.append(queue.get_nowait())
+            if len(batch) < BATCH_MAX_SIZE:
+                continue
         except TimeoutError:
-            if batch:
-                await flush(pool, batch)
-                batch = []
-                db_backoff = 1
+            if not batch:
+                continue
 
+        # A full batch, or rows left after BATCH_MAX_SECONDS without a new one. A failed
+        # write keeps the batch and is retried after a pause: the writer never ends.
+        try:
+            await flush(pool, batch)
+            batch = []
+            db_backoff = 1
         except Exception as e:
             print(f"[db] flush error: {e} — retrying in {db_backoff}s (batch size: {len(batch)})")
             if len(batch) > 10_000:
@@ -112,7 +121,7 @@ async def mqtt_listener(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
                 async for message in client.messages:
                     try:
                         msg = json.loads(message.payload)
-                    except (json.JSONDecodeError, ValueError):
+                    except (ValueError, RecursionError):  # not JSON, or nested too deep
                         print(f"[mqtt] bad payload, skipping: {message.payload!r}")
                         continue
 
@@ -129,12 +138,9 @@ async def mqtt_listener(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
 
                     # Branch 1: measurement (has cpm key)
                     if 'cpm' in msg:
-                        ts   = msg.get('ts')
-                        cpm  = msg.get('cpm')
-                        usvh = msg.get('usvh')
-
-                        if ts is None or cpm is None or usvh is None:
-                            print(f"[mqtt] missing fields, skipping: {msg}")
+                        row = reading(msg)
+                        if row is None:
+                            print(f"[mqtt] missing or invalid fields, skipping: {msg}")
                             continue
 
                         exists = await update_device_status(pool, device_id, 'online', update_last_seen=True)
@@ -142,8 +148,8 @@ async def mqtt_listener(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
                             print(f"[mqtt] unregistered device {device_id}, skipping measurement")
                             continue
 
-                        await queue.put((device_id, ts, int(cpm), float(usvh)))
-                        print(f"[mqtt] queued: device={device_id} ts={ts} cpm={cpm} usvh={usvh}")
+                        await queue.put((device_id, *row))
+                        print(f"[mqtt] queued: device={device_id} ts={row[0]} cpm={row[1]} usvh={row[2]}")
 
                     # Branch 2: connection notice
                     elif msg.get('status') == 'connected':
@@ -204,4 +210,5 @@ async def main() -> None:
         print("[db] pool closed")
 
 
-asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())

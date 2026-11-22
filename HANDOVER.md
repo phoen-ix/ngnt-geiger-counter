@@ -281,6 +281,7 @@ Changed from v2.0:
 - Returns `bool` indicating if the device exists (rowcount > 0)
 - Measurement branch checks the return value — unregistered devices are skipped with a warning log
 - The device ID comes from the topic (`/<device_id>/impulses`), which the ACL limits to the device's own login; a payload whose `id` names another device is skipped (it would let any registered counter write readings and status for anyone's device)
+- `reading()` queues only what the `measurements` columns take (a `ts` in the firmware's format, an INT cpm, a finite FLOAT usvh): one refused value fails the whole batch. A failed batch write is retried with backoff, never ends the writer. `tests/test_subscriber.py` runs both tasks against fakes of the broker and the pool
 
 ### `scripts/mosquitto/docker-entrypoint.sh`
 
@@ -330,6 +331,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 | `test_account.py` | Profile update, password change validation |
 | `test_admin.py` | Settings, SMTP, role/public toggle, user management |
 | `test_middleware.py` | `before_request` session handling, CSRF, rate limiting |
+| `test_subscriber.py` | The MQTT subscriber against fakes: bad readings skipped, a failed write retried |
 
 ---
 
