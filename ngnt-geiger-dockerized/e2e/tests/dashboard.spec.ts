@@ -31,11 +31,13 @@ test('visibility: guests see public counters, users also their own, admins all',
   expect(await sees(await signIn(viewer.username))).toEqual([`Own ${tag}`, `Public ${tag}`])
   expect(await sees(ADMIN_STATE)).toEqual([`Own ${tag}`, `Private ${tag}`, `Public ${tag}`])
 
-  // A private counter's ID in the URL falls back to all devices.
+  // A private counter's ID in the URL falls back to all devices. Its name is
+  // unknown to a guest's page, so a leaked row or card would show the ID.
   const guest = await open()
   await guest.goto(`/?device=${devPriv.id}`)
   await expect(guest.getByLabel('Device:')).toHaveValue('all')
-  await expect(guest.getByRole('cell', { name: `Private ${tag}` })).toHaveCount(0)
+  await expect(guest.locator('option[selected]')).toHaveText('All devices')
+  await expect(guest.locator('body')).not.toContainText(devPriv.id)
 })
 
 test('the device filter shows one counter, keeps the range and the header drops the device name', async ({ open }) => {
@@ -82,8 +84,8 @@ test('the time ranges: each lists the readings inside it', async ({ open }) => {
     await expect(page.getByRole('heading', { name: `Recent measurements — ${label.toLowerCase()}` })).toBeVisible()
     await expect(rows(page)).toHaveCount(count)
     expect(new URL(page.url()).searchParams.get('device')).toBe(dev.id)
-    const points = await page.evaluate(() => (window as any).Chart.getChart('chart').data.datasets[0].data.length)
-    expect(points).toBe(count)
+    // dashboard.js draws the chart after the table has rendered.
+    await expect.poll(() => page.evaluate(() => (window as any).Chart?.getChart('chart')?.data.datasets[0].data.length)).toBe(count)
   }
   // An unknown range is the default one.
   await page.goto(`/?range=1y&device=${dev.id}`)
@@ -97,8 +99,10 @@ test('cards: dose rate turns orange above the alert threshold; 100+ readings', a
   const user = createUser()
   const calm = createDevice(user)
   const hot = createDevice(user, { alert: 0.05 })
+  const hundred = createDevice(user)
   addReadings(calm.id, [{ minutesAgo: 1, cpm: 20 }])
   addReadings(hot.id, Array.from({ length: 120 }, (_, i) => ({ minutesAgo: i + 1, cpm: 20 })))
+  addReadings(hundred.id, Array.from({ length: 100 }, (_, i) => ({ minutesAgo: i + 1, cpm: 20 })))
   const page = await open(await signIn(user.username))
 
   await page.goto(`/?device=${calm.id}`)
@@ -109,6 +113,11 @@ test('cards: dose rate turns orange above the alert threshold; 100+ readings', a
   await page.goto(`/?device=${hot.id}`)
   await expect(card(page, 'Dose rate').locator('.card-value')).toHaveClass(/orange/)
   await expect(card(page, 'Readings stored').locator('.card-value')).toHaveText('100+')
+  await expect(rows(page)).toHaveCount(100)
+
+  // Exactly 100 is not "more than 100".
+  await page.goto(`/?device=${hundred.id}`)
+  await expect(card(page, 'Readings stored').locator('.card-value')).toHaveText('100')
   await expect(rows(page)).toHaveCount(100)
 })
 

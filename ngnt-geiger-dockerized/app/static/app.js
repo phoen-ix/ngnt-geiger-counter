@@ -11,3 +11,9 @@ document.addEventListener('submit', (event) => {
 document.addEventListener('change', (event) => {
     if ('autosubmit' in event.target.dataset) event.target.form.submit();
 });
+
+// Back to a page whose select sent it away: the browser shows the option picked then, not the
+// one the page was served with, and picking it again would change nothing.
+window.addEventListener('pageshow', () => {
+    for (const select of document.querySelectorAll('select[data-autosubmit]')) select.form.reset();
+});
