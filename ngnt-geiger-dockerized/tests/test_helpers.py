@@ -13,11 +13,11 @@ from tests.testutils import MockCursor, MockDB
 def test_derive_mqtt_credentials_known_values():
     from helpers import derive_mqtt_credentials
     username, password = derive_mqtt_credentials('AA:BB:CC:DD:EE:FF', 'mysecret')
-    assert username == 'geiger_ddeeff'
-    assert len(password) == 16
-    # Deterministic: same inputs always produce same output
-    u2, p2 = derive_mqtt_credentials('AA:BB:CC:DD:EE:FF', 'mysecret')
-    assert (username, password) == (u2, p2)
+    # What the firmware's deriveMqttCredentials() makes of this MAC and pepper: geiger_ + the last
+    # 6 of the lower-case MAC hex, the first 8 bytes of HMAC-SHA256(key=pepper, msg=MAC hex) as
+    # hex. A change here needs the firmware changed too (CLAUDE.md); e2e/tests/support.ts, the
+    # third copy, is checked against the server by every e2e device registration and MQTT login.
+    assert (username, password) == ('geiger_ddeeff', '921b42cd735fe4bb')
 
 
 def test_derive_mqtt_credentials_case_insensitive_mac():
