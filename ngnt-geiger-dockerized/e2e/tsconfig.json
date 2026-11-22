@@ -1,0 +1,14 @@
+{
+  // Type check only (npm run lint): Playwright runs the TypeScript itself.
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.ts", "tests", "docs"]
+}

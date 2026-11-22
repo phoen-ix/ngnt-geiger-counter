@@ -11,6 +11,7 @@
 # results and report go (default: a temp dir). The stack reads .env.example
 # (never .env) and keeps its state in named volumes, so a local instance in
 # this checkout is not touched. Node + `npm ci` in e2e/ are the caller's.
+# First it type-checks and lints the suite (npm run lint in e2e/).
 set -euo pipefail
 
 APP="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,6 +27,9 @@ case "${COMPOSE_PROJECT_NAME,,}" in
     echo "e2e: refusing the live project name '$COMPOSE_PROJECT_NAME'" >&2
     exit 1 ;;
 esac
+
+# The suite's type check and no-floating-promises lint (e2e/eslint.config.js): seconds, before the stack.
+(cd e2e && npm run --silent lint)
 
 export E2E_WEB_PORT="$PORT_BASE" E2E_MAIL_PORT="$((PORT_BASE + 5))" E2E_MQTT_PORT="$((PORT_BASE + 8))"
 # A /24 of its own per port block (24800 -> 10.248.0), as in docs-screenshots.sh.
