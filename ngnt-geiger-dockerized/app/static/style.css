@@ -228,6 +228,8 @@ td input[type="text"], td input[type="number"] {
     font-size: 0.82rem;
     width: 100%;
 }
+/* A counter's alert threshold: a few digits, never squeezed (on a phone the table scrolls). */
+td input[type="number"] { width: 7rem; flex-shrink: 0; }
 td input:focus {
     outline: none;
     border-color: #58a6ff;
