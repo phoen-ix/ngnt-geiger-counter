@@ -28,7 +28,7 @@ The project lives at: https://github.com/phoen-ix/ngnt-geiger-counter
 | Device provisioning | Done | Web UI → Mosquitto auto-reload (replaces add-device.sh) |
 | Password reset | Done | Token-based, email via SMTP |
 | Test suite | Done | pytest, mocked DB, no external deps; ruff lint (`ruff.toml`) in CI |
-| E2E suite | Done | Playwright in `ngnt-geiger-dockerized/e2e/tests/` against the whole stack (+ Mailpit), `scripts/e2e.sh`; `e2e/COVERAGE.md` |
+| E2E suite | Done | Playwright in `ngnt-geiger-dockerized/e2e/tests/` against the whole stack (+ Mailpit), `scripts/e2e.sh`; `e2e/COVERAGE.md`, the hand-overs in `tests/usecases/` (`e2e/COVERAGE.c.md`) |
 | Docs screenshot tour | Done | Playwright in `ngnt-geiger-dockerized/e2e/docs/`, run by `ngnt-geiger-dockerized/scripts/docs-screenshots.sh` (README "Screenshots") |
 | MQTT over TLS | Done | Self-signed certs, `setInsecure()` on ESP8266, ports 8883 (TLS) + 1883 (plain: the subscriber; on the host 127.0.0.1:2883 unless `.env` opens it) |
 | Data export (CSV/JSON) | Not started | |
@@ -334,7 +334,7 @@ The tests run on the host without Docker or external dependencies. All DB access
 | `test_middleware.py` | `before_request` session handling, CSRF, rate limiting |
 | `test_subscriber.py` | The MQTT subscriber against fakes: bad readings skipped, a failed write retried |
 | `test_routes_access.py` | Walks `app.url_map`: who may open each route (`POLICY`), every guarded one called as each kind of session |
-| `test_e2e_hygiene.py` | Scans every e2e and pytest file for steps a person would not take (allowlist with reasons) |
+| `test_e2e_hygiene.py` | Scans every e2e and pytest file for steps a person would not take (allowlist with reasons); a use-case spec reaches the stack only through a browser or as a counter |
 | `test_hand_kept_lists.py` | Copies kept by hand (mocked settings, form labels, e2e rate limits) against their source |
 
 ---

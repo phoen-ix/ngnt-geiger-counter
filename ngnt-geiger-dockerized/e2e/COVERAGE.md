@@ -3,7 +3,7 @@
 Every user-facing feature of the web app and the MQTT pipeline, mapped to the test that exercises it
 (`tests/<spec> › <title>`), or ❌ with the reason it is not an e2e test here.
 
-Extracted 2026-10-31, updated 2026-11-22, with (in `ngnt-geiger-dockerized/`):
+Extracted 2026-10-31, updated 2026-11-28, with (in `ngnt-geiger-dockerized/`):
 
 ```bash
 grep -n "@app.route" app/app.py                                   # 9 routes (+ Flask's /static)
@@ -13,8 +13,9 @@ grep -n "flash(" app/app.py                                       # messages / e
 grep -n "elif msg.get\|if 'cpm' in msg" scripts/pm2/mqtt_bro_impulses.py   # 3 MQTT message kinds
 ```
 
-**137 items: 132 ✅, 5 ❌ (4 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `setup` →
-`main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`.
+**137 items: 132 ✅, 5 ❌ (4 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `firstrun` →
+`setup` → `main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`. The hand-overs
+from one person to the next are part c, `COVERAGE.c.md` (`tests/usecases/`).
 
 ## Routes × roles (breadth)
 
@@ -73,7 +74,7 @@ no 5xx, no request leaving the stack.
 | An account at its login or reset limit locks out nobody else at the same address | ✅ `limits › an account at its sign-in or reset limit locks out nobody else at the same address` |
 | Behind a reverse proxy: the client address from `TRUSTED_PROXY_HOPS` proxies back, a client's own `X-Forwarded-For` not believed | ❌ (c) `tests/test_middleware.py::test_behind_the_configured_proxy_each_client_address_is_counted` (the e2e stack has no proxy) |
 | CSRF: POST without token → 400 | ✅ `limits › a form posted without its CSRF token is refused` |
-| Bootstrap admin: random first password in `data/`, removed after the change | ✅ `setup › admin password, SMTP to Mailpit, shared sessions` (reads it, changes it, the file is gone) |
+| Bootstrap admin: random first password in `data/`, removed after the change | ✅ `usecases/first-run › U1 the first admin signs in with the password from data/ and sets their own; the file goes, the old one is refused` |
 
 ## Dashboard (`dashboard.spec.ts`)
 
@@ -162,7 +163,7 @@ no 5xx, no request leaving the stack.
 | Base URL used in the reset mail | ✅ `auth › password reset › mail link sets a new password once; the old one stops working` |
 | SMTP settings saved and shown, STARTTLS select; the stored password never in the page, kept when left empty, cleared without a user | ✅ `global › SMTP settings are saved and shown again; the password never comes back to the page` |
 | SMTP port empty refused (broke every reset mail); EHLO name saved, placeholder hint, a space refused | ✅ same |
-| SMTP delivery (host, port, from, no TLS) | ✅ `setup` + `auth › password reset › mail link …` (Mailpit) |
+| SMTP delivery (host, port, from, no TLS) | ✅ `usecases/first-run › U2 the mail server and Base URL the admin types in carry a reset mail; …` (Mailpit) |
 
 ## Hardware
 

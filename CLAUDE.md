@@ -42,12 +42,19 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
   `on…=` attribute or a third-party URL to a template: `tests/test_csp.py` and the e2e guard fail on it.
 - E2E: every test owns its users/devices (`uid()`, SQL in `e2e/tests/support.ts`; the dashboard's device filter
   only renders with two visible counters, so a test that reads it creates both); sign-ins go through
-  `signIn()`/`submitForm()`. Failed sign-ins and reset requests are limited per address and account, so a test's
-  own accounts never meet them; only registering (5/min per address, one address for the whole suite) waits out
-  a 429 (`auth.spec.ts`). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores
+  `signIn()`/`submitForm()`, except in the use cases. Failed sign-ins and reset requests are limited per address
+  and account, so a test's own accounts never meet them; only registering (5/min per address, one address for the
+  whole suite) waits out a 429 (`auth.spec.ts`). Specs that change site-wide settings belong in `global.spec.ts` (runs alone, restores
   the defaults); `limits.spec.ts` runs last; every other spec runs in `main` without being listed. `repeat.spec.ts`
   does each repeatable action twice in a row. `scripts/e2e.sh` first type-checks and lints `e2e/` (`npm run lint`:
   `tsc` + `no-floating-promises`).
+- Use cases (`e2e/tests/usecases/`, `e2e/COVERAGE.c.md`): one hand-over per test, followed to the last person.
+  Everyone logs in through the form in their own browser (`browserOf`, the admin too), what is handed over is what
+  is used (the password file, the mail, the counter's MAC and pepper), and a spec imports only `./lib`: no SQL,
+  HTTP, saved session or `mqttPublish` (`given` in `lib.ts` makes the background facts; pinned by
+  `tests/test_e2e_hygiene.py`). `first-run.spec.ts` sets the bootstrap admin's password and the reset mail in
+  its own `firstrun` project before `setup.ts`, so it needs the fresh stack `scripts/e2e.sh` starts;
+  `usecases/global.spec.ts` runs in `global` beside `global.spec.ts` (`workers: 1`).
 - Test hygiene: `tests/test_e2e_hygiene.py` scans every e2e and pytest file for steps a person would not take
   (sleeps, forced or synthetic events, actions inside `expect.poll`/loops, page scripts that change the page);
   a kept use goes on its allowlist with a count and a reason. A failing test is a product finding: never bend it.
