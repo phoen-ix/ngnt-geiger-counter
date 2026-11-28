@@ -33,7 +33,7 @@ export const AUTH = fileURLToPath(new URL('../.auth/', import.meta.url))
 export const ADMIN_STATE = path.join(AUTH, 'admin.json')
 export const USER_STATE = path.join(AUTH, 'user.json')
 
-/** Every account's password (the bootstrap admin's after setup.ts). */
+/** Every account's password (the bootstrap admin's after usecases/first-run.spec.ts). */
 export const PASSWORD = 'geiger-e2e-Pw7x'
 // werkzeug's pbkdf2 format, few rounds: check_password_hash reads them from the hash.
 const SALT = 'e2esalt'

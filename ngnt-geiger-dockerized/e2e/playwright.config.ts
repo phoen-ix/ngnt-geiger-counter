@@ -6,10 +6,12 @@ import { defineConfig, devices } from '@playwright/test'
  * this needs (E2E_BASE_URL, E2E_MAIL_URL). COVERAGE.md maps every feature to a
  * test.
  *
- * Projects, in order: `setup` (admin password, SMTP to Mailpit, shared
- * sessions) -> `main` (independent specs, each with its own users and devices)
- * -> `global` (specs that change site-wide settings, one at a time) ->
- * `limits` (runs into the rate limits; last, as every browser shares one IP). */
+ * Projects, in order: `firstrun` (the bootstrap admin sets PASSWORD and the
+ * reset mail, in the browser: tests/usecases/first-run.spec.ts) -> `setup`
+ * (shared sessions) -> `main` (independent specs, each with its own users and
+ * devices) -> `global` (the specs that change site-wide settings, one test at a
+ * time) -> `limits` (runs into the rate limits; last, as every browser shares
+ * one IP). */
 const ci = Boolean(process.env.CI)
 
 export default defineConfig({
@@ -36,10 +38,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'setup', testMatch: 'setup.ts' },
-    // Every other spec: a new file runs without being named here.
-    { name: 'main', testMatch: '*.spec.ts', testIgnore: /(global|limits)\.spec\.ts/, dependencies: ['setup'] },
-    { name: 'global', testMatch: 'global.spec.ts', dependencies: ['main'] },
+    { name: 'firstrun', testMatch: 'first-run.spec.ts' },
+    { name: 'setup', testMatch: 'setup.ts', dependencies: ['firstrun'] },
+    // Every other spec, use cases included: a new file runs without being named here.
+    { name: 'main', testMatch: '*.spec.ts', testIgnore: /(first-run|global|limits)\.spec\.ts/, dependencies: ['setup'] },
+    // tests/global.spec.ts and tests/usecases/global.spec.ts, never side by side.
+    { name: 'global', testMatch: 'global.spec.ts', workers: 1, dependencies: ['main'] },
     { name: 'limits', testMatch: 'limits.spec.ts', dependencies: ['global'] },
   ],
 })

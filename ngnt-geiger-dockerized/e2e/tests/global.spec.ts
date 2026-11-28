@@ -165,7 +165,7 @@ test('SMTP settings are saved and shown again; the password never comes back to 
   await expect(flash(page)).toHaveText('EHLO Name may only contain letters, digits, dots and hyphens.')
   await expect(page.getByLabel('EHLO Name')).toHaveValue('mx.geiger-e2e.example')
 
-  // Back to Mailpit without login (setup.ts): no user, so no password either.
+  // Back to Mailpit without login (usecases/first-run.spec.ts): no user, so no password either.
   await page.getByLabel('SMTP User').fill('')
   await page.getByLabel('EHLO Name').fill('')
   await page.getByRole('button', { name: 'Save SMTP' }).click()
