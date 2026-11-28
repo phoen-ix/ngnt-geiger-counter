@@ -167,10 +167,12 @@ export function mqttPublish(
 /** Subscribes to `topic` as `user` over the TLS listener, runs `meanwhile` once
  * the broker acknowledged the subscription, and returns mosquitto_sub's debug
  * log: a message delivered shows as "received PUBLISH". It listens 5 s in all,
- * as there is no event for a message that must not arrive. */
+ * as there is no event for a message that must not arrive. In a terminal (-t):
+ * into a pipe the log came only when it exited, so `meanwhile` ran after it
+ * had stopped listening and nothing could ever be heard. */
 export async function mqttListen(user: string, password: string, topic: string, meanwhile: () => void): Promise<string> {
   const sub = spawn('docker', [
-    'exec', CONTAINER.mosquitto, 'mosquitto_sub', '-h', 'localhost', '-p', '8883',
+    'exec', '-t', CONTAINER.mosquitto, 'mosquitto_sub', '-h', 'localhost', '-p', '8883',
     '--cafile', '/mosquitto/certs/ca.crt', '--insecure', '-u', user, '-P', password, '-t', topic, '-d', '-W', '5',
   ])
   let log = ''
