@@ -42,19 +42,19 @@ The name in the header and in emails is `SITE_NAME` in `.env`, not an admin sett
 | **Display Timezone** | `Europe/Vienna` | Timestamps on the dashboard, **Devices** and the user list. A tz database name such as `Europe/Berlin`. |
 | **Offline Timeout (minutes)** | `5` | A counter shows as offline when its last message is older than this, or when the broker reported it gone. |
 | **Default CPM Factor** | `0.0057` | Greyed out: each counter converts CPM to µSv/h itself (**CPM Factor** in its setup portal). |
-| **Default Alert Threshold (μSv/h)** | `0.5` | Above this the dashboard's **Dose rate** card turns orange, for every counter whose owner set no threshold of its own on **Devices**. |
-| **Session Timeout (minutes)** | `1440` | How long a sign-in lasts after the user's last page load. |
+| **Default Alert Threshold (μSv/h)** | `0.5` | Above this the dashboard's **Dose rate** card turns orange and the owner gets one alert email, for every counter whose owner set no threshold of its own on **Devices**. |
+| **Session Timeout (minutes)** | `1440` | How long a sign-in lasts after the user's last page load. Past it, the user's next click leads to the login page with **You were signed out after being idle**. |
 | **Registration** | **Open** | **Disabled**: the **Register** page sends visitors back to the login page with **Registration is currently disabled.** |
 
 There is no form to create a user: people register themselves. To add someone while registration is disabled, set it to **Open** until they have registered.
 
 ## Password-reset email (SMTP)
 
-**Admin** → **SMTP (Password Reset Email)**, then **Save SMTP**.
+**Admin** → **SMTP (Password Reset Email)**, then **Save SMTP**. The same server sends the alert email: when a reading goes above a counter's alert threshold, the MQTT subscriber mails the counter's owner once, and again only after a reading at or below it.
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **SMTP Host** | empty | Empty: no reset mail is sent. |
+| **SMTP Host** | empty | Empty: no reset or alert mail is sent. |
 | **SMTP Port** | `587` | |
 | **SMTP User**, **SMTP Password** | empty | Leave **SMTP User** empty for a server without login. The page never shows the stored password: left empty, it is kept; saved without a user, it is cleared. |
 | **From Address** | empty | `Name <address>` or an address (the name defaults to `SITE_NAME`). Empty: the **SMTP User** is the sender. An address at `example.com`, `.local` or without a dot in the domain sends nothing. |
@@ -70,7 +70,7 @@ To test, enter an email address under **Account**, sign out and use **Forgot pas
 - **Make someone admin or user:** click the button in **Role** (it shows the current role). Your own role button is disabled.
 - **Show or hide someone's counters:** click the button in **Public** (**Yes**/**No**). This is the same setting as **Public profile** on that user's **Account** page.
 - Both buttons set the other value, they don't flip it: a double click, or the same button in a tab opened before the change, changes nothing and says so (e.g. **alice is already admin.**).
-- **Delete a user:** click **Delete** and confirm. The broker stops accepting their counters, the account and its counters are removed, and the user is signed out at their next request. Their stored readings stay in the database but no longer appear. There is no **Delete** on your own row.
+- **Delete a user:** click **Delete** and confirm. The broker stops accepting their counters, the account and its counters are removed, and the user is signed out at their next request (the login page says **This account no longer exists**). Their stored readings stay in the database but no longer appear. There is no **Delete** on your own row.
 
 You can't edit another user's email, pepper or password. A user who forgot their password and has no email address can't get back in; they can register a new account.
 

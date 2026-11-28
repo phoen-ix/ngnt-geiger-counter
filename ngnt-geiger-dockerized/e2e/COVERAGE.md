@@ -13,7 +13,7 @@ grep -n "flash(" app/app.py                                       # messages / e
 grep -n "elif msg.get\|if 'cpm' in msg" scripts/pm2/mqtt_bro_impulses.py   # 3 MQTT message kinds
 ```
 
-**137 items: 132 ✅, 5 ❌ (4 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `firstrun` →
+**138 items: 133 ✅, 5 ❌ (4 × (c) covered by pytest, 1 × (a) hardware).** Roles: guest (signed out), user, admin. The suite runs as `firstrun` →
 `setup` → `main` → `global` (site-wide settings, alone) → `limits` (last); see `playwright.config.ts`. The hand-overs
 from one person to the next are part c, `COVERAGE.c.md` (`tests/usecases/`).
 
@@ -64,10 +64,10 @@ no 5xx, no request leaving the stack.
 | Forgot password: unknown user / user without email → same message, no token, no mail | ✅ `password reset › no mail for an unknown user or one without an email, same message` |
 | Reset: unknown token, expired token → `/login` "Invalid or expired reset link." | ✅ `password reset › an unknown or expired link goes back to the login page` |
 | Reset: password too short / mismatched, token stays unused | ✅ `password reset › a short or mismatched new password is refused` |
-| Session ends when the password changes elsewhere (`pw_version`) | ✅ `account › change the password: this session stays, the others are signed out` |
-| Session ends when the user is deleted | ✅ `admin › delete a user after confirming: devices unprovisioned, their session ends` |
+| Session ends when the password changes elsewhere (`pw_version`); the login page says why (`usecases/accounts › U11`) | ✅ `account › change the password: this session stays, the others are signed out` |
+| Session ends when the user is deleted; the login page says why (`usecases/accounts › U7`) | ✅ `admin › delete a user after confirming: devices unprovisioned, their session ends` |
 | Role change applies without signing in again | ✅ `admin › promote a user to admin and back; the role applies without signing in again` |
-| Session lifetime = session timeout setting (an idle session ends on every worker: `tests/test_middleware.py`) | ✅ `global › the session timeout sets how long a sign-in lasts` |
+| Session lifetime = session timeout setting (an idle session ends on every worker: `tests/test_middleware.py`); the cookie lasts 31 days longer, so the login page can say why (`usecases/global › U15`) | ✅ `global › the session timeout sets how long a sign-in lasts` |
 | Rate limit: login 10 failed sign-ins/min per address and account → 429 (a sign-in that works and page views don't count: `tests/test_middleware.py`) | ✅ `limits › POST /login answers 429 after 10 a minute` |
 | Rate limit: register 5/min → 429 | ✅ `limits › POST /register answers 429 after 5 a minute` |
 | Rate limit: forgot-password 5/min per address and account → 429 | ✅ `limits › POST /forgot-password answers 429 after 5 a minute` |
@@ -94,6 +94,7 @@ no 5xx, no request leaving the stack.
 | Auto-refresh every 60 s with range and device | ✅ same (`meta refresh`) |
 | Cards: CPM, dose rate (4 decimals), readings count, "100+" only above 100, and 100 rows max | ✅ `cards: dose rate turns orange above the counter's own alert threshold, set on Devices; 100+ readings` |
 | Dose rate orange above the counter's own alert threshold, set by its owner on Devices | ✅ same |
+| A reading above the threshold mails the owner once per crossing (subscriber, admin's SMTP) | ✅ `usecases/counters › U6 …` (Mailpit; restart and default threshold: `tests/test_subscriber.py`) |
 | Dose rate orange above the default alert threshold | ✅ `global › the offline timeout and the default alert threshold change the dashboard cards` |
 | Device card online / offline (status + last seen within the offline timeout) | ✅ `online means status online and seen within the offline timeout` |
 | Offline timeout setting changes it | ✅ `global › the offline timeout and the default alert threshold change the dashboard cards` |

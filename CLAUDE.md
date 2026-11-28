@@ -61,6 +61,8 @@ All web-app work happens in `ngnt-geiger-dockerized/`.
 - Access: `tests/test_routes_access.py` walks `app.url_map`; a new route fails until `POLICY` says who may open it.
 - `devices.conf` holds `device_id:$7$…` hashes (Mosquitto password-file format), never a password; the Mosquitto
   entrypoint copies them into `passwd.txt`. The initial admin password goes only to `data/admin_initial_password.txt`.
+- `app/mailer.py` (SMTP for the reset and the alert mail) is standard library only: the subscriber imports it
+  (compose mounts `app/` read-only at `/opt/app`, on `PYTHONPATH`).
 - The subscriber takes the device ID from the MQTT topic (the ACL ties it to the device's login), never from the
   payload's `id`.
 - Screenshot names in `docs/screenshots/` are stable (README and the gallery link them). The tour's readings end at

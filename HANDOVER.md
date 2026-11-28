@@ -2,7 +2,7 @@
 
 This document is a technical handover for anyone (human or AI assistant) continuing work on this project. It describes the current state of every component, the design decisions made, known issues, and concrete next steps.
 
-Last updated: 2026-11-14 (v3.5; since then: no device passwords in the database, user and admin guides in `docs/`, reset mail headers and the EHLO name as an admin setting, a DB error no longer logs everyone out, ruff in CI, containers without capabilities and the web app as uid 1000, a Content-Security-Policy with Chart.js served by the app)
+Last updated: 2026-11-14 (v3.5; since then: no device passwords in the database, user and admin guides in `docs/`, reset mail headers and the EHLO name as an admin setting, a DB error no longer logs everyone out, ruff in CI, containers without capabilities and the web app as uid 1000, a Content-Security-Policy with Chart.js served by the app; 2026-11-28 owner decisions: a reading above a counter's alert threshold mails its owner once per crossing, and the login page says why a session ended)
 
 ---
 
@@ -139,6 +139,7 @@ CREATE TABLE devices (
   last_seen       DATETIME     DEFAULT NULL,
   cpm_factor      FLOAT        DEFAULT NULL,
   alert_threshold FLOAT        DEFAULT NULL,
+  alerted         BOOLEAN      NOT NULL DEFAULT FALSE,
   provisioned     BOOLEAN      NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -149,7 +150,8 @@ CREATE TABLE devices (
 - Devices are registered via the web UI, not auto-created by the subscriber.
 - The subscriber only does `UPDATE` (no INSERT) — unregistered devices are ignored.
 - `ON DELETE CASCADE` ensures user deletion cleans up devices.
-- `alert_threshold`: set by the owner on `/devices` (a number ≥ 0; empty = NULL: the `default_alert_threshold` setting applies). The dashboard's dose-rate card turns orange above it. `cpm_factor` has no UI (the firmware applies its own).
+- `alert_threshold`: set by the owner on `/devices` (a number ≥ 0; empty = NULL: the `default_alert_threshold` setting applies). The dashboard's dose-rate card turns orange above it, and the subscriber mails the owner (see `alerted`). `cpm_factor` has no UI (the firmware applies its own).
+- `alerted`: whether the last reading was above the threshold. The subscriber sets it on each reading; a change to TRUE mails the owner, so there is one mail per crossing, and none again after a restart.
 - No password column: the MQTT password is derived from MAC + pepper whenever it is needed. v3.0–3.5 stored it in plaintext in `mqtt_password` (never read); `migrate_schema()` drops that column on start.
 
 ### `password_resets` table
@@ -179,15 +181,15 @@ Key-value store for runtime settings. `site_name` is an env var (`SITE_NAME`), n
 | `display_timezone` | `Europe/Vienna` | Timestamp display (dashboard, devices, admin) |
 | `offline_timeout_minutes` | `5` | Dashboard offline detection |
 | `default_cpm_factor` | `0.0057` | Admin page placeholder |
-| `default_alert_threshold` | `0.5` | Dashboard dose rate card |
+| `default_alert_threshold` | `0.5` | Dashboard dose rate card, alert mail |
 | `base_url` | *(empty)* | Password reset email links |
-| `smtp_host` | *(empty)* | Password reset email |
-| `smtp_port` | `587` | Password reset email |
-| `smtp_user` | *(empty)* | Password reset email |
-| `smtp_password` | *(empty)* | Password reset email |
-| `smtp_from` | *(empty)* | Password reset email |
-| `smtp_tls` | `1` | Password reset email |
-| `smtp_ehlo_name` | *(empty)* | Password reset email: EHLO name (empty: the From domain) |
+| `smtp_host` | *(empty)* | Reset and alert mail |
+| `smtp_port` | `587` | Reset and alert mail |
+| `smtp_user` | *(empty)* | Reset and alert mail |
+| `smtp_password` | *(empty)* | Reset and alert mail |
+| `smtp_from` | *(empty)* | Reset and alert mail |
+| `smtp_tls` | `1` | Reset and alert mail |
+| `smtp_ehlo_name` | *(empty)* | Reset and alert mail: EHLO name (empty: the From domain) |
 | `registration_enabled` | `1` | Register route (open/disabled) |
 | `session_timeout_minutes` | `1440` | Session cookie lifetime (admin-configurable) |
 
@@ -216,11 +218,11 @@ Single-file Flask app with all routes. Key components:
 
 **Rate limiting:** Flask-Limiter on the POSTs of the auth endpoints: login 10 failed sign-ins/min per client address and account (a sign-in that works doesn't count), forgot-password 5/min per address and account, register 5/min per address. The client address is the peer's, or with `TRUSTED_PROXY_HOPS=n` the one n reverse proxies back in `X-Forwarded-For` (werkzeug `ProxyFix`, nothing else from the proxy is trusted). In-memory storage (per worker). No default limits on other routes.
 
-**Session security (`before_request`):** On every authenticated request, one query reads `pw_version`, `role` and the `session_timeout_minutes` setting. A DB error is logged and the session kept (an outage logs nobody out). If the user was deleted, the session is cleared. If `pw_version` doesn't match (password was changed elsewhere), the session is cleared. The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login. The session timeout is checked against the cookie's signature age there (Flask's own check runs before the setting is read, against what the worker last set) and applied to the renewed cookie via `app.permanent_session_lifetime`.
+**Session security (`before_request`):** On every authenticated request, one query reads `pw_version`, `role` and the `session_timeout_minutes` setting. A DB error is logged and the session kept (an outage logs nobody out). If the user was deleted, or `pw_version` doesn't match (password was changed elsewhere), or the cookie is older than the session timeout, `end_session()` clears the session and redirects to `/login` with the reason as a flash (owner decision 2026-11-28). The role is always refreshed from the DB, so admin role changes take effect immediately without requiring re-login. The session timeout is checked against the cookie's signature age there (Flask's own check runs before the setting is read, against what the worker last set); `app.permanent_session_lifetime` is the timeout plus 31 days, for the renewed cookie and Flask's check, so the browser still sends a cookie past the timeout and the login page can say why.
 
 **Input validation:** Usernames restricted to `[a-zA-Z0-9_-]` (3-50 chars). User-controlled strings in JS contexts use `|tojson` filter to prevent XSS. Invalid `display_timezone` values fall back to UTC instead of crashing.
 
-**Schema migration:** On startup, `migrate_schema()` applies the schema changes an older `dbinit.sql` lacks (idempotent, every start): it drops `devices.mqtt_password` and adds the `settings` rows added since (`INSERT IGNORE`: `smtp_ehlo_name`).
+**Schema migration:** On startup, `migrate_schema()` applies the schema changes an older `dbinit.sql` lacks (idempotent, every start): it drops `devices.mqtt_password`, adds `devices.alerted` and the `settings` rows added since (`INSERT IGNORE`: `smtp_ehlo_name`).
 
 **Admin bootstrap:** On startup, checks if `users` table is empty. If so, creates `admin` user with random password and saves it to `/app/data/admin_initial_password.txt` (mode 0600); the log only says where it is. The file is deleted when the admin changes their password.
 
@@ -259,7 +261,11 @@ Single-file Flask app with all routes. Key components:
 - `login_required`, `admin_required`: decorators checking `session['user_id']` / `session['role']`
 - `derive_mqtt_credentials(mac, pepper)`: HMAC-SHA256 credential derivation matching firmware
 - `provision_device()` / `unprovision_device()`: manage `devices.conf` (Mosquitto `$7$` hashes from `mosquitto_password_hash()`) with file locking (`fcntl.flock`) and `.reload` flag; `hash_legacy_device_passwords()` hashes plaintext lines of older versions on start
-- `send_password_reset_email()`: SMTP using settings from DB (465 = implicit TLS, certificate verified, 10 s timeout); `base_url` from DB settings (empty: nothing sent), `site_name` from `SITE_NAME` env var, EHLO = the `smtp_ehlo_name` setting or the From domain; Message-ID, Date, `Auto-Submitted`; refuses a placeholder From
+- `send_password_reset_email()`: the reset link on `base_url` from DB settings (empty: nothing sent), sent with `mailer.send_mail()`
+
+### `app/mailer.py`
+
+`send_mail(to, subject, body, settings)`: SMTP using the settings from DB (465 = implicit TLS, certificate verified, 10 s timeout), From name `SITE_NAME`, EHLO = the `smtp_ehlo_name` setting or the From domain; Message-ID, Date, `Auto-Submitted`; refuses a placeholder From. Standard library only: the subscriber imports it too (compose mounts `app/` read-only at `/opt/app`, on `PYTHONPATH`).
 
 ### `app/templates/`
 
@@ -282,6 +288,7 @@ Changed from v2.0:
 - Returns `bool` indicating if the device exists (rowcount > 0)
 - Measurement branch checks the return value — unregistered devices are skipped with a warning log
 - The device ID comes from the topic (`/<device_id>/impulses`), which the ACL limits to the device's own login; a payload whose `id` names another device is skipped (it would let any registered counter write readings and status for anyone's device)
+- `check_threshold()` runs on each reading before it is queued: above the counter's `alert_threshold` (else `default_alert_threshold`; above as the dashboard's orange), with `devices.alerted` FALSE, it sets the flag and mails the owner's email through the admin's SMTP settings (`mailer.send_mail()` in a thread); at or below, it clears the flag. A failed check or mail is logged, the reading is stored either way
 - `reading()` queues only what the `measurements` columns take (a `ts` in the firmware's format, an INT cpm, a finite FLOAT usvh): one refused value fails the whole batch. A failed batch write is retried with backoff, never ends the writer. `tests/test_subscriber.py` runs both tasks against fakes of the broker and the pool
 
 ### `scripts/mosquitto/docker-entrypoint.sh`

@@ -26,6 +26,8 @@ If the page answers **Registration is currently disabled.**, the admin has close
 
 You stay signed in until you click **Logout** or until the session timeout the admin set runs out (24 hours by default, counted from your last page load). Changing your password signs out your other browsers.
 
+When a session ends on its own, your next click leads to the login page, which says why: **You were signed out after being idle** (the session timeout ran out), **Your password was changed on another device**, or **This account no longer exists** (an admin deleted it).
+
 ## Resetting a forgotten password
 
 1. On the login page click **Forgot password?**
@@ -123,7 +125,7 @@ The setup portal opens again only when the counter can't reach its saved WiFi at
 On **Devices**, under **Your Devices**:
 
 - **Rename:** change the **Display Name** and click **Save**. Leave it empty to show the device ID instead.
-- **Alert threshold:** under **Alert above (µSv/h)** enter the dose rate above which this counter's **Dose rate** card turns orange, and click **Save** (or press Enter). Leave it empty for the admin's default, shown greyed out in the field.
+- **Alert threshold:** under **Alert above (µSv/h)** enter the dose rate above which this counter's **Dose rate** card turns orange, and click **Save** (or press Enter). Leave it empty for the admin's default, shown greyed out in the field. When a reading goes above it, you get one email (at the address in **Account**, if the admin set up SMTP); the next one only after a reading at or below the threshold.
 - **Remove:** click **Delete** and confirm. The broker no longer accepts the counter, and it disappears from the dashboard. If you register it again, its earlier readings show up again.
 
 **Status** and **Last Seen** show when the counter last reported, in the admin's display timezone.

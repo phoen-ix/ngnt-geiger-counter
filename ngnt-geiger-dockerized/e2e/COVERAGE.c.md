@@ -33,9 +33,20 @@ exits. `support.ts::mqttListen` read it the same way, so `mqtt › … nor read 
 published only after its listener had stopped and passed whatever the ACL said (an ACL that lets every
 counter read all readings: green before, red now). Both listen in a terminal (`docker exec -t`) now.
 
-Two things the chains brought up are the owner's to decide, not bugs: a dose rate above a counter's
-threshold only turns its card orange (nobody is told), and a person whose session ended - idle past the
-timeout, deleted, or signed out by a password change - lands on the login page with no word of why.
+Two things the chains brought up were the owner's to decide, not bugs: a dose rate above a counter's
+threshold only turned its card orange (nobody was told), and a person whose session ended - idle past the
+timeout, deleted, or signed out by a password change - landed on the login page with no word of why.
+
+**Owner decisions, 2026-11-28** (U6, U7, U11, U15 extended to them; red on the code before, green after):
+
+- A reading above a counter's alert threshold mails its owner once, through the admin's SMTP settings;
+  the next mail only after a reading at or below it. The subscriber checks each reading as it arrives,
+  and `devices.alerted` keeps which side the last one was on, so a restart sends no second mail
+  (`tests/test_subscriber.py`). The card is orange above, as before.
+- A person whose session ends lands on `/login` with the reason: "You were signed out after being
+  idle", "Your password was changed on another device", "This account no longer exists"
+  (`tests/test_middleware.py`). For the first, the browser keeps the cookie 31 days past the timeout:
+  it expired with the timeout before, so the server never heard from the person again.
 
 - **Run:** `scripts/e2e.sh` (the use cases run inside the suite: `first-run.spec.ts` in its own
   `firstrun` project before `setup.ts`, `global.spec.ts` in `global`, the rest in `main`).
@@ -55,17 +66,17 @@ timeout, deleted, or signed out by a password change - lands on the login page w
 | U3 | A counter shows its MAC and the pepper it made up | the owner follows "account settings" from Devices, types the pepper into Account and the MAC into Devices; the counter logs in with what it derives, sends a reading; the owner's devices page says online with a last-seen time, the dashboard shows the reading (CPM, dose rate, online) | `U3 a counter set up with the pepper on its screen logs in, and its reading is on its owner's pages` | partial (pepper by SQL, the counter's login re-derived by the test, `signIn()`) |
 | U4 | The owner deletes a counter | the counter is locked out; registered again, it is let in and online again | `U4 a counter its owner deletes is locked out, and let in again once registered again` | partial (`signIn()`) |
 | U5 | A counter loses power | its connection, made with the firmware's last will, drops without a goodbye; the broker publishes the will and the owner's page says offline; back on, online | `U5 a counter whose power goes is offline on its owner's page (the broker's last will), and online once back` | partial (the test published "offline" itself) |
-| U6 | The owner sets a counter's alert threshold on Devices | a guest picks the public counter: the dose-rate card turns orange; cleared, the admin's default (0.5) applies and it is not orange | `U6 the alert threshold an owner sets on Devices turns a guest's dose-rate card orange; cleared, the default applies` | none (no UI until phase 2, then the owner's own dashboard only) |
+| U6 | The owner sets a counter's alert threshold on Devices | the counter's readings above it turn a guest's dose-rate card orange and put one mail in the owner's inbox; another reading above, no second mail; one below and one above again, the second mail; cleared, the admin's default (0.5) applies and it is not orange | `U6 the alert threshold an owner sets on Devices turns a guest's dose-rate card orange and mails the owner once per crossing; cleared, the default applies` | none (no UI until phase 2, then the owner's own dashboard only) |
 
 ## Accounts - `accounts.spec.ts`
 
 | # | Hand-over | Followed to | Test | Before |
 |---|---|---|---|---|
-| U7 | The admin deletes a user (confirm dialog) | the person's open tab is sent to the login page, the form refuses them, their counter is locked out | `U7 a user the admin deletes is signed out, cannot sign in, and their counter is locked out` | partial (`ADMIN_STATE`, `signIn()`) |
+| U7 | The admin deletes a user (confirm dialog) | the person's open tab is sent to the login page, which says the account no longer exists; the form refuses them, their counter is locked out | `U7 a user the admin deletes is signed out and told why, cannot sign in, and their counter is locked out` | partial (`ADMIN_STATE`, `signIn()`) |
 | U8 | The admin makes a user an admin, then a user again | the person's nav gets Admin, the admin page opens with their own role locked; taken back, the Admin link on their open page leads to the dashboard and is gone | `U8 a role the admin gives is the admin page the person gets, and taken back, the page is gone` | partial (`ADMIN_STATE`, `signIn()`) |
 | U9 | The admin makes a user public, then private | a guest can pick their counter, and the person's Account says Public; private again, both go back | `U9 a person the admin makes public: a guest sees their counter and the person's account says so; private again, both go` | partial (`ADMIN_STATE`) |
 | U10 | A person makes their own profile public, then private | a guest can pick their counter, then not | `U10 a person who makes their profile public is seen by a guest, and private again, is not` | partial (`signIn()`) |
-| U11 | A person changes their password on one device | the other device is sent to the login page; there the old password is refused, the new one logs in; the first device stays in | `U11 a password changed on one device signs the other out; there only the new one signs in` | partial (`signIn()`) |
+| U11 | A person changes their password on one device | the other device is sent to the login page, which says the password was changed on another device; there the old password is refused, the new one logs in; the first device stays in | `U11 a password changed on one device signs the other out and says why; there only the new one signs in` | partial (`signIn()`) |
 
 ## Site settings - `global.spec.ts`
 
@@ -76,7 +87,7 @@ Runs in the `global` project, one test at a time; `given.settingsBack` puts the 
 | U12 | The admin sets the display timezone, and back | a person's last-seen time on Devices in New York time, then in Vienna time again | `U12 the display timezone the admin sets is the one a person's dates are shown in` | partial (`ADMIN_STATE`, `signIn()`) |
 | U13 | The admin sets the offline timeout and the default alert threshold, and back | a person's dashboard: a counter last seen 30 min ago turns online, 0.0570 µSv/h orange; back, offline and not orange | `U13 the offline timeout and the default alert threshold the admin sets change a person's dashboard cards` | partial (`ADMIN_STATE`, `signIn()`) |
 | U14 | The admin closes registration, then opens it | a guest's Register link leads to the login page with the reason; opened, the guest registers and logs in | `U14 registration the admin closes turns a guest away; opened again, the guest registers and signs in` | partial (GET only) |
-| U15 | The admin sets the session timeout to a minute | a person who leaves their tab alone that long is sent to the login page on their next click; logged in again, a session in use goes on | `U15 with the session timeout the admin sets, a person who leaves the tab alone that long is signed out` | partial (read from a `Set-Cookie` header) |
+| U15 | The admin sets the session timeout to a minute | a person signed in before the change and one signed in after it leave their tabs alone that long: on their next click each is sent to the login page, which says they were idle; logged in again, a session in use goes on | `U15 with the session timeout the admin sets, a person who leaves the tab alone that long is signed out and told why` | partial (read from a `Set-Cookie` header) |
 
 U15 waits 61 s: time on the server has no event (its `wait` is on the scan's allowlist). U14 is the one
 use case that registers: registration allows 5 a minute per address and the whole suite is one
@@ -87,4 +98,3 @@ address, so it registers in `global`, after `auth.spec.ts`'s registrations in `m
 | Hand-over | Why |
 |---|---|
 | The firmware itself on a counter | (a) needs the ESP8266 and its tube; `aCounter` plays it over the same TLS listener and topic, with credentials derived the firmware's way (pinned against `helpers.derive_mqtt_credentials()` by `tests/test_helpers.py`) |
-| A notification when a counter's dose rate passes its threshold | not built: the orange card is the only alert the app gives (U6, U13) |
