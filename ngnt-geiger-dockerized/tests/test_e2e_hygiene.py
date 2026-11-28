@@ -6,6 +6,12 @@ file, not a list of today's, for those shapes and for the ones the 2026-11-22 au
 publishing, reloading and resubmitting inside `expect.poll`, a loop that posts until refused, and
 scripts that edit the page. Each use kept is in an allowlist with its count and why it is not a
 workaround; a use that goes away must leave the list too.
+
+The use cases (`e2e/tests/usecases/`, COVERAGE.c.md) carry a rule of their own. They follow a hand-over -
+a password file, a mailed link, a pepper, a setting - from one person to the next, and before them every
+sign-in was an HTTP post or a saved session, the pepper was SQL and the counter's last will was published
+by the test itself. A use-case spec therefore reaches the stack only through a browser, or as a counter
+through Mosquitto, by the helpers of its own `lib.ts`.
 """
 
 import fnmatch
@@ -75,6 +81,20 @@ E2E_ALLOWED = {
 }
 UNIT_ALLOWED = {}
 
+USECASE_SPECS = sorted((E2E / 'tests' / 'usecases').glob('*.spec.ts'))
+USECASE_RULES = {
+    # Every helper in e2e/tests/support.ts that talks to the app, MariaDB, Mosquitto or Mailpit itself,
+    # and node's own ways to do it.
+    'api-call': re.compile(
+        r'(?<![.\w])(?:fetch|sql|createUser|createDevice|addReadings|postForm|signIn|submitForm|mqttPublish'
+        r'|mqttListen|mqttCredentials|mailTo|execFileSync|spawn)\('),
+    'request-context': re.compile(r'\.request\b|\brequest\.newContext\b'),
+    'saved-session': re.compile(r'\b(?:addCookies|storageState|ADMIN_STATE|USER_STATE)\b'),
+}
+# A use case is written against its own helpers and nothing else.
+USECASE_IMPORTS = {'./lib', '@playwright/test'}
+_IMPORT_FROM = re.compile(r"^import\b[^;]*?\bfrom\s+'([^']+)'", re.M)
+
 
 def _calls(src, opener):
     """The argument text of every call that starts with `opener` (which ends at its '(')."""
@@ -101,6 +121,10 @@ def _e2e_findings(src):
     return {k: v for k, v in found.items() if v}
 
 
+def _usecase_findings(src):
+    return {k: v for k, rule in USECASE_RULES.items() if (v := len(rule.findall(src)))}
+
+
 def _unit_findings(src):
     return {k: v for k, rule in UNIT_RULES.items() if (v := len(rule.findall(src)))}
 
@@ -119,6 +143,14 @@ def test_no_unit_test_sleeps():
     assert _scan(UNIT_FILES, _unit_findings) == {k: n for k, (n, _) in UNIT_ALLOWED.items()}
 
 
+def test_a_use_case_reaches_the_stack_only_through_a_browser_or_a_counter():
+    assert len(USECASE_SPECS) >= 4, f'found only {len(USECASE_SPECS)} use-case specs: is the glob still right?'
+    assert _scan(USECASE_SPECS, _usecase_findings) == {}
+    for p in USECASE_SPECS:
+        imported = set(_IMPORT_FROM.findall(p.read_text()))
+        assert imported and imported <= USECASE_IMPORTS, (p.name, imported)
+
+
 def test_every_allowlisted_use_has_a_reason():
     for key, (n, why) in E2E_ALLOWED.items():
         assert n > 0 and len(why) > 30, key
@@ -130,14 +162,17 @@ def test_every_spec_runs_in_exactly_one_playwright_project():
     projects = re.findall(r"\{ name: '(\w+)', testMatch: ('[^']+'|/[^/]+/)(?:, testIgnore: (/[^/]+/))?", config)
     assert len(projects) >= 4, projects
 
-    def matches(pattern, name):
-        return re.search(pattern[1:-1], name) if pattern.startswith('/') else fnmatch.fnmatch(name, pattern[1:-1])
+    # Playwright reads a glob as `**/<glob>` and a regex against the whole path.
+    def matches(pattern, spec):
+        if pattern.startswith('/'):
+            return re.search(pattern[1:-1], spec.as_posix())
+        return fnmatch.fnmatch(spec.name, pattern[1:-1])
 
-    specs = sorted(p.name for p in (E2E / 'tests').glob('*.spec.ts'))
-    assert len(specs) >= 10
-    for name in specs:
-        runs_in = [p for p, match, skip in projects if matches(match, name) and not (skip and matches(skip, name))]
-        assert len(runs_in) == 1, (name, runs_in)
+    specs = sorted((E2E / 'tests').rglob('*.spec.ts'))
+    assert len(specs) >= 14
+    for spec in specs:
+        runs_in = [p for p, match, skip in projects if matches(match, spec) and not (skip and matches(skip, spec))]
+        assert len(runs_in) == 1, (spec.name, runs_in)
 
 
 def test_the_scan_catches_what_it_is_for():
@@ -179,3 +214,45 @@ def test_the_scan_catches_what_it_is_for():
 """
     assert _e2e_findings(fine) == {}
     assert _unit_findings('    time.sleep(1)\n    await asyncio.sleep(0.1)\n') == {'sleep': 2}
+
+
+def test_the_use_case_rules_catch_what_the_old_specs_did():
+    # Verbatim from the specs and setup.ts before the use cases: a session from an HTTP post or a saved
+    # file, the account and the pepper from SQL, the counter's login re-derived, the last will published
+    # by the test, the outcome read from the database, the first password read and changed over HTTP.
+    old = {
+        'const page = await open(await signIn(user.username))': {'api-call': 1},
+        'const page = await open(ADMIN_STATE)': {'saved-session': 1},
+        'const user = createUser({ pepper: null })': {'api-call': 1},
+        'const { id, password } = mqttCredentials(mac, user.pepper!)': {'api-call': 1},
+        "expect(mqttPublish(id, password, { id, status: 'offline' }).ok).toBe(true)": {'api-call': 1},
+        'expect(sql(`SELECT COUNT(*) FROM devices WHERE device_id = ${q(deviceId)};`)).toBe(\'0\')': {'api-call': 1},
+        'const api = await request.newContext({ baseURL: BASE, storageState: await signIn(\'admin\', initial) })': {
+            'request-context': 1, 'saved-session': 1, 'api-call': 1},
+        "const res = await postForm(api, '/account', { action: 'change_password' })": {'api-call': 1},
+        "execFileSync('docker', ['exec', CONTAINER.flask, 'cat', '/app/data/admin_initial_password.txt'], {": {
+            'api-call': 1},
+        'writeFileSync(ADMIN_STATE, JSON.stringify(await admin.storageState()))': {'saved-session': 2},
+        'const text = await mailTo(user.email)': {'api-call': 1},
+        "await submitForm(elsewhere, '/login', { Username: user.username, Password: newPassword }, 'Login')": {
+            'api-call': 1},
+        'await page.context().addCookies(cookies)': {'saved-session': 1},
+        "const res = await page.request.get('/admin')": {'request-context': 1},
+        'const res = await fetch(`${BASE}/devices`)': {'api-call': 1},
+    }
+    for line, found in old.items():
+        assert _usecase_findings(line) == found, line
+    # ... and what a use case is made of.
+    use_case = """
+  const person = given.user({ pepper: null })
+  const admin = await browserOf(THE_ADMIN)
+  await counter.connects(31)
+  await counter.isLockedOut()
+  const mails = await inboxOf(person.email)
+  expect(adminPasswordFile()).toBeNull()
+  await logIn(page, person)
+"""
+    assert _usecase_findings(use_case) == {}
+    two = "import type { Page } from '@playwright/test'\n\nimport {\n  THE_ADMIN,\n  given,\n} from './lib'\n"
+    assert _IMPORT_FROM.findall(two) == ['@playwright/test', './lib']
+    assert _IMPORT_FROM.findall("import { sql } from '../support'\n") == ['../support']
