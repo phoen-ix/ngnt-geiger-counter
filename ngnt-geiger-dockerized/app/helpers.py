@@ -4,15 +4,13 @@ import hashlib
 import hmac
 import logging
 import os
-import smtplib
-import ssl
-from email.mime.text import MIMEText
-from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from functools import wraps
 
 import pymysql
 from dbutils.pooled_db import PooledDB
 from flask import redirect, session, url_for
+
+from mailer import send_mail
 
 logger = logging.getLogger(__name__)
 
@@ -170,57 +168,17 @@ def hash_legacy_device_passwords() -> None:
 # ── Email ────────────────────────────────────────────────────────────────────
 
 def send_password_reset_email(email: str, token: str, settings: dict) -> bool:
-    smtp_host = settings.get('smtp_host', '')
-    if not smtp_host:
-        return False
-
-    smtp_port = int(settings.get('smtp_port', '587'))
-    smtp_user = settings.get('smtp_user', '')
-    smtp_password = settings.get('smtp_password', '')
-    smtp_tls = settings.get('smtp_tls', '1') == '1'
-    site_name = os.environ.get('SITE_NAME', 'NGNT Geiger Counter')
-    # The From field may be saved empty: the SMTP user sends then.
-    from_name, sender = parseaddr(settings.get('smtp_from') or smtp_user)
-    domain = sender.rpartition('@')[2].lower() if '@' in sender else ''
-    if '.' not in domain or domain.endswith('.local') or domain in ('example.com', 'example.org', 'example.net'):
-        logger.error('reset mail not sent: From address %r is not a real address', sender)
-        return False
-
     base_url = settings.get('base_url', '').rstrip('/')
     if not base_url:
-        logger.error('reset mail not sent: Base URL is not set, so the link would lead nowhere')
+        if settings.get('smtp_host'):
+            logger.error('reset mail not sent: Base URL is not set, so the link would lead nowhere')
         return False
     reset_url = f'{base_url}/reset-password/{token}'
-
+    site_name = os.environ.get('SITE_NAME', 'NGNT Geiger Counter')
     body = (
         f'You requested a password reset for your {site_name} account.\n\n'
         f'Click the link below to set a new password:\n{reset_url}\n\n'
         f'This link expires in 1 hour.\n\n'
         f'If you did not request this, ignore this email.'
     )
-
-    msg = MIMEText(body)
-    msg['Subject'] = f'Password Reset — {site_name}'
-    msg['From'] = formataddr((from_name or site_name, sender))
-    msg['To'] = email
-    msg['Date'] = formatdate(localtime=True)
-    msg['Message-ID'] = make_msgid(domain=domain)
-    msg['Auto-Submitted'] = 'auto-generated'
-
-    ehlo_name = settings.get('smtp_ehlo_name') or domain
-    context = ssl.create_default_context()
-    try:
-        if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, local_hostname=ehlo_name, timeout=10, context=context)
-        else:
-            server = smtplib.SMTP(smtp_host, smtp_port, local_hostname=ehlo_name, timeout=10)
-            if smtp_tls:
-                server.starttls(context=context)
-        if smtp_user:
-            server.login(smtp_user, smtp_password)
-        server.sendmail(sender, [email], msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        logger.error('reset mail send failed: %s', e)
-        return False
+    return send_mail(email, f'Password Reset — {site_name}', body, settings)
