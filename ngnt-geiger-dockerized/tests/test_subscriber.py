@@ -34,14 +34,22 @@ def sub(monkeypatch):
 
 class FakePool:
     """aiomysql's pool as the script uses it: acquire() -> connection, cursor() -> cursor.
-    Every device exists; the first `fail` batch writes raise as a lost connection does."""
+    Every device exists, named Cellar, its owner has an email and the admin's default threshold is
+    0.5; `threshold` is the device's own, `alerted` its row's flag. The first `fail` batch writes
+    raise as a lost connection does."""
 
-    rowcount = 1
-
-    def __init__(self, fail=0):
+    def __init__(self, fail=0, threshold=None, alerted=False):
         self.fail = fail
         self.rows = []
         self.written = asyncio.Event()
+        self.threshold, self.alerted = threshold, alerted
+        self.rowcount = 1
+
+    async def fetchall(self):
+        return [('default_alert_threshold', '0.5'), ('smtp_host', 'smtp.geiger.test')]
+
+    async def fetchone(self):
+        return 'Cellar', self.threshold, 'owner@geiger.test'
 
     @contextlib.asynccontextmanager
     async def acquire(self):
@@ -51,8 +59,13 @@ class FakePool:
     async def cursor(self):
         yield self
 
-    async def execute(self, sql, args):
-        pass
+    async def execute(self, sql, args=None):
+        # The client's FOUND_ROWS: an UPDATE counts the rows its WHERE matched.
+        self.rowcount = 1
+        if sql.startswith('UPDATE devices SET alerted'):
+            above = args[0]
+            self.rowcount = int(self.alerted != above)
+            self.alerted = above
 
     async def executemany(self, sql, rows):
         if self.fail:
@@ -149,3 +162,51 @@ def test_a_write_that_fails_after_a_quiet_spell_is_retried(sub, monkeypatch):
         return pool.rows
 
     assert asyncio.run(run()) == [row]
+
+
+# ── The alert mail ──────────────────────────────────────────────────────────
+# Owner decision 2026-11-28: a dose rate above the counter's threshold mails its owner once, through
+# the admin's SMTP settings; the next mail only after a reading at or below it (the dashboard's
+# card is orange above, as before).
+
+@pytest.fixture
+def mails(sub, monkeypatch):
+    """What the subscriber hands to the admin's SMTP server: (to, subject, body)."""
+    sent = []
+    monkeypatch.setattr(sub.mailer, 'send_mail',
+                        lambda to, subject, body, settings: sent.append((to, subject, body)) or True)
+    return sent
+
+
+def readings(sub, pool, *usvh):
+    async def run():
+        for v in usvh:
+            await sub.check_threshold(pool, DEVICE, '2026-11-28 10:00:00', v)
+    asyncio.run(run())
+
+
+def test_a_dose_rate_above_the_threshold_mails_the_owner_once_until_it_was_back_at_or_below(sub, mails):
+    readings(sub, FakePool(threshold=0.1), 0.05, 0.2, 0.3, 0.1, 0.25)
+    assert [(to, body.split(' at ')[0]) for to, _, body in mails] == [
+        ('owner@geiger.test', 'Cellar measured 0.2000 µSv/h'), ('owner@geiger.test', 'Cellar measured 0.2500 µSv/h')]
+    assert 'alert threshold of 0.1 µSv/h' in mails[0][2]
+    assert 'Cellar' in mails[0][1]
+
+
+def test_without_a_threshold_of_its_own_the_admins_default_applies(sub, mails):
+    readings(sub, FakePool(), 0.4, 0.6)
+    assert len(mails) == 1
+    assert 'Cellar measured 0.6000 µSv/h' in mails[0][2] and 'alert threshold of 0.5 µSv/h' in mails[0][2]
+
+
+def test_a_restart_while_above_sends_no_second_mail(sub, mails):
+    """Which side of the threshold the last reading was on is the device's row, not the process's memory."""
+    readings(sub, FakePool(threshold=0.1, alerted=True), 0.3, 0.4)
+    assert mails == []
+
+
+def test_the_mail_has_gone_out_when_the_reading_is_queued(sub, mails):
+    """The owner's inbox holds it by the time the reading can be on the dashboard (e2e U6 reads it then)."""
+    row = asyncio.run(first_queued(sub, [json.dumps({**GOOD, 'usvh': 0.6}).encode()]))
+    assert row == (DEVICE, '2026-11-22 10:00:00', 12, 0.6)
+    assert len(mails) == 1

@@ -71,6 +71,9 @@ def test_startup_drops_the_plaintext_password_column(app_instance, mock_cursor):
     import app as app_module
     app_module.migrate_schema()
     assert ('ALTER TABLE devices DROP COLUMN IF EXISTS mqtt_password', None) in mock_cursor.execute_log
+    # And the column the subscriber's alert mail keeps its state in.
+    assert any(sql.startswith('ALTER TABLE devices ADD COLUMN IF NOT EXISTS alerted ')
+               for sql, _ in mock_cursor.execute_log)
     # An older database gets the settings rows dbinit.sql seeds only on a new one.
     assert any('INSERT IGNORE INTO settings' in sql and 'smtp_ehlo_name' in sql for sql, _ in mock_cursor.execute_log)
 

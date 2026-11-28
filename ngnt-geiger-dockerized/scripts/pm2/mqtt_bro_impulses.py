@@ -9,6 +9,8 @@ import aiomqtt
 import aiomysql
 from pymysql.constants import CLIENT
 
+import mailer  # app/mailer.py: compose mounts app/ at /opt/app, on PYTHONPATH
+
 # ── Config ────────────────────────────────────────────────────────────────────
 _net           = os.getenv('IPV4_NETWORK')
 DB_HOST        = _net + '.20'
@@ -21,6 +23,8 @@ MQTT_HOST      = _net + '.30'
 MQTT_PORT      = 1883
 MQTT_USER      = os.getenv('MQTT_PYTHON_USER')
 MQTT_PASS      = os.getenv('MQTT_PYTHON_USERPW')
+
+SITE_NAME      = os.getenv('SITE_NAME', 'NGNT Geiger Counter')
 
 BATCH_MAX_SIZE    = 50    # flush after this many rows
 BATCH_MAX_SECONDS = 5.0   # or after this many seconds, whichever comes first
@@ -58,6 +62,39 @@ async def update_device_status(pool: aiomysql.Pool, device_id: str, status: str,
     except Exception as e:
         print(f"[device] update error for {device_id}: {e}")
         return False
+
+
+# ── Alert mail ───────────────────────────────────────────────────────────────
+async def check_threshold(pool: aiomysql.Pool, device_id: str, ts: str, usvh: float) -> None:
+    """Mails the owner, through the admin's SMTP settings, when a reading is above the counter's
+    alert threshold (its own on Devices, else the admin's default; above as the dashboard's orange
+    card): once, and again only after a reading at or below it. devices.alerted keeps which side
+    the last reading was on, so a restart sends no second mail."""
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT `key`, `value` FROM settings")
+                settings = dict(await cur.fetchall())
+                await cur.execute(
+                    "SELECT d.display_name, d.alert_threshold, u.email FROM devices d "
+                    "JOIN users u ON u.id = d.user_id WHERE d.device_id = %s", (device_id,))
+                name, threshold, email = await cur.fetchone()
+                if threshold is None:
+                    threshold = float(settings.get('default_alert_threshold', '0.5'))
+                above = usvh > threshold
+                # Matches only when the reading is on the other side of the last one.
+                await cur.execute("UPDATE devices SET alerted = %s WHERE device_id = %s AND alerted != %s",
+                                  (above, device_id, above))
+                if not (above and cur.rowcount and email):
+                    return
+    except Exception as e:
+        print(f"[alert] check failed for {device_id}: {e}")
+        return
+    name = name or device_id
+    body = (f"{name} measured {usvh:.4f} µSv/h at {ts} UTC, above its alert threshold of {threshold:g} µSv/h.\n\n"
+            f"The next alert comes once its dose rate was back at or below the threshold and rises above it again.")
+    if await asyncio.to_thread(mailer.send_mail, email, f"Dose rate alert: {name} — {SITE_NAME}", body, settings):
+        print(f"[alert] mailed the owner of {device_id}: {usvh} µSv/h above {threshold:g}")
 
 
 # ── DB writer ─────────────────────────────────────────────────────────────
@@ -148,6 +185,8 @@ async def mqtt_listener(pool: aiomysql.Pool, queue: asyncio.Queue) -> None:
                             print(f"[mqtt] unregistered device {device_id}, skipping measurement")
                             continue
 
+                        # Before queueing: by the time the reading is stored, its mail is out.
+                        await check_threshold(pool, device_id, row[0], row[2])
                         await queue.put((device_id, *row))
                         print(f"[mqtt] queued: device={device_id} ts={row[0]} cpm={row[1]} usvh={row[2]}")
 

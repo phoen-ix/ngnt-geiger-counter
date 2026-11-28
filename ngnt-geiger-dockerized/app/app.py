@@ -156,6 +156,9 @@ def migrate_schema():
         with db.cursor() as cur:
             # v3.0-3.5 wrote every device's MQTT password here in plaintext; nothing read it.
             cur.execute("ALTER TABLE devices DROP COLUMN IF EXISTS mqtt_password")
+            # The subscriber's alert mail (2026-11-28) keeps which side of the threshold a counter is on.
+            cur.execute("ALTER TABLE devices ADD COLUMN IF NOT EXISTS alerted BOOLEAN NOT NULL DEFAULT FALSE "
+                        "AFTER alert_threshold")
             # Settings rows added after dbinit.sql seeded the database (it runs only on a new one).
             cur.execute("INSERT IGNORE INTO settings (`key`, `value`) VALUES ('smtp_ehlo_name', '')")
     finally:

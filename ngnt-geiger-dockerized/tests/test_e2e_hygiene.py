@@ -66,8 +66,8 @@ E2E_ALLOWED = {
         2, 'a counter reconnects, as the firmware does, until Mosquitto took its login in (5-s reload poll), '
            'or until its removal reached it'),
     ('e2e/tests/usecases/counters.spec.ts', 'retry-action'): (
-        6, 'the devices page and the dashboard have no live update (the dashboard reloads itself after 60 s), '
-           'so the owner reloads them until the subscriber stored what the counter sent'),
+        7, 'the devices page and the dashboard have no live update (the dashboard reloads itself after 60 s), '
+           'so the owner or a guest reloads them until the subscriber stored what the counter sent'),
     ('e2e/tests/usecases/global.spec.ts', 'wait'): (
         1, 'a person leaves the tab alone past the session timeout (1 minute, the least there is); time '
            'passing on the server has no event to wait for'),

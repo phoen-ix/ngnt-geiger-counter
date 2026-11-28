@@ -83,8 +83,8 @@ export function adminPasswordFile(): string | null {
   }
 }
 
-/** The mails to `to`, newest first, once one has come: what that person finds in their inbox. */
-export async function inboxOf(to: string): Promise<{ from: string; text: string }[]> {
+/** The mails to `to`, newest first, once `count` have come: what that person finds in their inbox. */
+export async function inboxOf(to: string, count = 1): Promise<{ from: string; text: string }[]> {
   let found: { ID: string; From: { Address: string } }[] = []
   await expect
     .poll(async () => {
@@ -92,7 +92,7 @@ export async function inboxOf(to: string): Promise<{ from: string; text: string 
       found = (await res.json()).messages ?? []
       return found.length
     }, { message: `mail to ${to}` })
-    .toBeGreaterThan(0)
+    .toBeGreaterThanOrEqual(count)
   return Promise.all(
     found.map(async (m) => ({ from: m.From.Address, text: (await (await fetch(`${MAIL}/api/v1/message/${m.ID}`)).json()).Text })),
   )

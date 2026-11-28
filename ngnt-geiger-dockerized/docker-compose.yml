@@ -121,7 +121,8 @@ services:
             dockerfile: ./Dockerfiles/DockerfileSubscriber
         container_name: ngnt-geiger-subscriber
         restart: unless-stopped
-        # Runs as its own unprivileged user and writes nothing.
+        # Runs as its own unprivileged user and writes nothing. It mails the dose-rate alert with
+        # the web app's app/mailer.py (read-only, on PYTHONPATH).
         security_opt: ["no-new-privileges:true"]
         cap_drop: [ALL]
         read_only: true
@@ -134,8 +135,11 @@ services:
           MQTT_PYTHON_USER: ${MQTT_PYTHON_USER}
           MQTT_PYTHON_USERPW: ${MQTT_PYTHON_USERPW}
           IPV4_NETWORK: ${IPV4_NETWORK}
+          SITE_NAME: ${SITE_NAME:-NGNT Geiger Counter}
+          PYTHONPATH: /opt/app
         volumes:
             - ./scripts/pm2/:/opt/scripts/:ro
+            - ./app:/opt/app:ro
         depends_on:
             - ngnt-geiger-mariadb
             - ngnt-geiger-mosquitto

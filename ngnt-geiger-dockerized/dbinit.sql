@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS `devices` (
   `last_seen`       DATETIME     DEFAULT NULL,
   `cpm_factor`      FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
   `alert_threshold` FLOAT        DEFAULT NULL   COMMENT 'NULL = use global default',
+  `alerted`         BOOLEAN      NOT NULL DEFAULT FALSE COMMENT 'Last reading above the threshold (its owner was mailed)',
   `provisioned`     BOOLEAN      NOT NULL DEFAULT FALSE,
   `created_at`      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
