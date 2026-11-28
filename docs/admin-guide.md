@@ -50,7 +50,7 @@ There is no form to create a user: people register themselves. To add someone wh
 
 ## Password-reset email (SMTP)
 
-**Admin** → **SMTP (Password Reset Email)**, then **Save SMTP**. The same server sends the alert email: when a reading goes above a counter's alert threshold, the MQTT subscriber mails the counter's owner once, and again only after a reading at or below it.
+**Admin** → **SMTP (Password Reset and Alert Email)**, then **Save SMTP**. The same server sends the alert email: when a reading goes above a counter's alert threshold, the MQTT subscriber mails the counter's owner once, and again only after a reading at or below it.
 
 | Field | Default | Notes |
 |-------|---------|-------|
