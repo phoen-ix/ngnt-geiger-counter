@@ -19,7 +19,7 @@ async function adminPage(browserOf: (who: typeof THE_ADMIN) => Promise<Page>) {
 /** The guest's dashboard: the device filter lists every counter they may see. */
 const guestSees = (guest: Page, name: string) => guest.getByLabel('Device:').getByRole('option', { name })
 
-test('U7 a user the admin deletes is signed out, cannot sign in, and their counter is locked out', async ({ browserOf }) => {
+test('U7 a user the admin deletes is signed out and told why, cannot sign in, and their counter is locked out', async ({ browserOf }) => {
   const person = given.user()
   const counter = aCounter(person.pepper!)
   const page = await browserOf(person)
@@ -39,6 +39,7 @@ test('U7 a user the admin deletes is signed out, cannot sign in, and their count
 
   await nav(page).getByRole('link', { name: 'Account' }).click()
   await expect(page).toHaveURL(/\/login$/)
+  await expect(flash(page)).toHaveText('This account no longer exists')
   await tryToLogIn(page, person)
   await expect(flash(page)).toHaveText('Invalid username or password.')
   await counter.isLockedOut()
@@ -122,7 +123,7 @@ test('U10 a person who makes their profile public is seen by a guest, and privat
   await expect(guestSees(guest, counter.name)).toHaveCount(0)
 })
 
-test('U11 a password changed on one device signs the other out; there only the new one signs in', async ({ browserOf }) => {
+test('U11 a password changed on one device signs the other out and says why; there only the new one signs in', async ({ browserOf }) => {
   const person = given.user()
   const laptop = await browserOf(person)
   const phone = await browserOf(person)
@@ -137,6 +138,7 @@ test('U11 a password changed on one device signs the other out; there only the n
 
   await nav(phone).getByRole('link', { name: 'Devices' }).click()
   await expect(phone).toHaveURL(/\/login$/)
+  await expect(flash(phone)).toHaveText('Your password was changed on another device')
   await tryToLogIn(phone, person)
   await expect(flash(phone)).toHaveText('Invalid username or password.')
   await logIn(phone, changed)

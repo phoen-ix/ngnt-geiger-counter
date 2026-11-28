@@ -1,6 +1,8 @@
 """Tests for before_request middleware, CSRF, and rate limiting."""
 
-from datetime import timedelta
+import re
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from unittest.mock import patch
 
 import pytest
@@ -8,50 +10,6 @@ from itsdangerous import TimestampSigner
 from werkzeug.security import generate_password_hash
 
 from tests.testutils import queue_settings
-
-# ── before_request: user deleted ────────────────────────────────────────────
-
-def test_before_request_user_deleted_clears_session(client, mock_cursor):
-    """If the user was deleted from DB, session should be cleared."""
-    with client.session_transaction() as sess:
-        sess['user_id'] = 99
-        sess['username'] = 'ghost'
-        sess['role'] = 'user'
-        sess['pw_version'] = 0
-
-    # before_request: user lookup returns None
-    mock_cursor.add_response(fetchone=None)
-    # Dashboard (anonymous now): get_settings + devices query
-    queue_settings(mock_cursor)
-    mock_cursor.add_response(fetchall=[])  # no devices
-
-    resp = client.get('/')
-    assert resp.status_code == 200
-    with client.session_transaction() as sess:
-        assert 'user_id' not in sess
-
-
-# ── before_request: pw_version mismatch ─────────────────────────────────────
-
-def test_before_request_pw_version_mismatch(client, mock_cursor):
-    """If pw_version changed (password changed elsewhere), session is cleared."""
-    with client.session_transaction() as sess:
-        sess['user_id'] = 1
-        sess['username'] = 'testuser'
-        sess['role'] = 'user'
-        sess['pw_version'] = 0  # old version
-
-    # before_request: DB returns pw_version=1 (changed)
-    mock_cursor.add_response(fetchone={'pw_version': 1, 'role': 'user', 'session_timeout': '1440'})
-    # Dashboard (anonymous after clear): get_settings + devices query
-    queue_settings(mock_cursor)
-    mock_cursor.add_response(fetchall=[])
-
-    resp = client.get('/')
-    assert resp.status_code == 200
-    with client.session_transaction() as sess:
-        assert 'user_id' not in sess
-
 
 # ── before_request: role refreshed ──────────────────────────────────────────
 
@@ -74,26 +32,21 @@ def test_before_request_role_refreshed(client, mock_cursor):
         assert sess['role'] == 'admin'
 
 
-# ── before_request: session timeout applied ─────────────────────────────────
+# ── before_request: the cookie outlives the session timeout ─────────────────
 
-def test_before_request_session_timeout(client, mock_cursor, app_instance):
-    """Session timeout from settings should be applied."""
-    from datetime import timedelta
-
+def test_the_cookie_outlives_the_session_timeout(client, mock_cursor):
+    """The server ends a session idle past the timeout (below); the browser keeps the cookie 31 days
+    longer, so that a person back after the timeout still sends it and is told why. Until 2026-11-28
+    it expired with the timeout and the person landed on /login with no word of why."""
     with client.session_transaction() as sess:
-        sess['user_id'] = 1
-        sess['username'] = 'testuser'
-        sess['role'] = 'user'
-        sess['pw_version'] = 0
-
-    # before_request: DB returns timeout=30 minutes
+        sess.update(user_id=1, username='testuser', role='user', pw_version=0)
     mock_cursor.add_response(fetchone={'pw_version': 0, 'role': 'user', 'session_timeout': '30'})
-    # Dashboard: get_settings + devices
     queue_settings(mock_cursor)
     mock_cursor.add_response(fetchall=[])
 
-    client.get('/')
-    assert app_instance.permanent_session_lifetime == timedelta(minutes=30)
+    resp = client.get('/')
+    expires = parsedate_to_datetime(re.search('Expires=([^;]+)', resp.headers['Set-Cookie']).group(1))
+    assert timedelta(days=31, minutes=29) < expires - datetime.now(UTC) <= timedelta(days=31, minutes=30)
 
 
 # ── before_request: the session timeout decides on every worker ────────────
@@ -128,6 +81,56 @@ def test_the_session_timeout_ends_an_idle_session_on_every_worker(
         assert resp.status_code == 200
     else:
         assert (resp.status_code, resp.headers['Location']) == (302, '/login')
+
+
+# ── before_request: a session that ends says why ───────────────────────────
+# Owner decision 2026-11-28: a person whose session ends lands on /login with the reason.
+
+SESSION_ENDS = {
+    'idle past the timeout': (31, {'pw_version': 0, 'role': 'user', 'session_timeout': '30'},
+                              'You were signed out after being idle'),
+    'password changed on another device': (0, {'pw_version': 1, 'role': 'user', 'session_timeout': '1440'},
+                                           'Your password was changed on another device'),
+    'account deleted': (0, None, 'This account no longer exists'),
+}
+
+
+@pytest.mark.parametrize('path', ['/', '/devices'])
+@pytest.mark.parametrize(('idle', 'row', 'reason'), SESSION_ENDS.values(), ids=SESSION_ENDS)
+def test_a_session_that_ends_lands_on_the_login_page_with_the_reason(
+        client, mock_cursor, app_instance, monkeypatch, path, idle, row, reason):
+    monkeypatch.setattr(app_instance, 'permanent_session_lifetime', timedelta(days=31))  # a worker after a start
+    _signed_in_minutes_ago(client, monkeypatch, idle)
+    mock_cursor.add_response(fetchone=row)
+
+    resp = client.get(path, follow_redirects=True)
+    assert resp.request.path == '/login'
+    assert f'<div class="error">{reason}</div>' in resp.text
+    with client.session_transaction() as sess:
+        assert 'user_id' not in sess
+
+
+def test_past_a_one_minute_timeout_the_worker_that_applied_it_still_says_why(
+        client, mock_cursor, app_instance, monkeypatch):
+    """Every request applies the timeout to the cookie it renews. Until 2026-11-28 it also became the
+    age Flask itself checks the next cookie against, before the setting is read: past it, Flask had
+    dropped the session already and nothing was left to say why."""
+    monkeypatch.setattr(app_instance, 'permanent_session_lifetime', timedelta(days=31))
+    row = {'pw_version': 0, 'role': 'user', 'session_timeout': '1'}
+    with app_instance.test_client() as other:  # someone else's page load on this worker
+        with other.session_transaction() as sess:
+            sess.update(user_id=2, username='other', role='user', pw_version=0)
+        mock_cursor.add_response(fetchone=row)
+        mock_cursor.add_response(fetchone={'pepper': None})
+        queue_settings(mock_cursor)
+        mock_cursor.add_response(fetchall=[])
+        assert other.get('/devices').status_code == 200
+    _signed_in_minutes_ago(client, monkeypatch, 2)
+    mock_cursor.add_response(fetchone=row)
+
+    resp = client.get('/devices', follow_redirects=True)
+    assert resp.request.path == '/login'
+    assert 'You were signed out after being idle' in resp.text
 
 
 # ── before_request: DB error swallowed ──────────────────────────────────────

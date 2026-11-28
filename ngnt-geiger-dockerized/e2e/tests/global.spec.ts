@@ -100,11 +100,12 @@ test('the session timeout sets how long a sign-in lasts', async ({ open }) => {
   const page = await open(await signIn(createUser().username))
   const res = await page.goto('/devices')
   await expect(page.getByRole('heading', { name: 'Your Devices' })).toBeVisible()
-  // What the server sets, not the browser's jar.
+  // What the server sets, not the browser's jar: the timeout and 31 days, so that a person back
+  // after the timeout still has the cookie and the login page can say why (usecases U15).
   const setCookie = (await res!.allHeaders())['set-cookie'] ?? ''
   const left = Date.parse(/Expires=([^;]+)/i.exec(setCookie)?.[1] ?? '') / 1000 - Date.now() / 1000
-  expect(left).toBeGreaterThan(59 * 60)
-  expect(left).toBeLessThanOrEqual(60 * 60 + 5)
+  expect(left).toBeGreaterThan(31 * 86400 + 59 * 60)
+  expect(left).toBeLessThanOrEqual(31 * 86400 + 60 * 60 + 5)
 })
 
 test('invalid settings are refused, nothing is saved and nobody is locked out', async ({ open }) => {

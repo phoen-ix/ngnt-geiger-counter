@@ -98,11 +98,9 @@ def refresh_session():
         logger.exception('refresh_session: DB check failed, keeping the session')
         return
     if not user:
-        session.clear()
-        return
+        return end_session('This account no longer exists')
     if 'pw_version' in session and user['pw_version'] != session['pw_version']:
-        session.clear()
-        return
+        return end_session('Your password was changed on another device')
     lifetime = timedelta(minutes=int(user['session_timeout'] or 1440))
     # Flask checked the cookie's age before this request read the setting, against the lifetime
     # this worker set last (Flask's 31 days after a start): check it against the setting.
@@ -110,13 +108,21 @@ def refresh_session():
         app.session_interface.get_signing_serializer(app).loads(
             request.cookies[app.session_interface.get_cookie_name(app)], max_age=lifetime.total_seconds())
     except BadSignature:
-        session.clear()
-        return
+        return end_session('You were signed out after being idle')
     session['role'] = user['role']
     session['pw_version'] = user['pw_version']
     session.permanent = True
-    # For the cookie this response renews (one request at a time per gunicorn worker).
-    app.permanent_session_lifetime = lifetime
+    # For the cookie this response renews (one request at a time per gunicorn worker), and the age
+    # Flask checks the next one against. 31 days past the timeout: the session ends at the timeout
+    # (above), and the cookie the browser still sends after it lets /login say why.
+    app.permanent_session_lifetime = lifetime + timedelta(days=31)
+
+
+def end_session(reason):
+    """Signs the person out and sends them to /login, which shows the reason."""
+    session.clear()
+    flash(reason, 'error')
+    return redirect(url_for('login'))
 
 
 # ── Admin bootstrap ─────────────────────────────────────────────────────────

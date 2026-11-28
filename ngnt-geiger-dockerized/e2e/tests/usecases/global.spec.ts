@@ -83,7 +83,7 @@ test('U14 registration the admin closes turns a guest away; opened again, the gu
   await logIn(guest, newcomer)
 })
 
-test('U15 with the session timeout the admin sets, a person who leaves the tab alone that long is signed out', async ({ browserOf }) => {
+test('U15 with the session timeout the admin sets, a person who leaves the tab alone that long is signed out and told why', async ({ browserOf }) => {
   test.slow() // it waits out the shortest timeout there is, a minute
   const person = given.user()
   const page = await browserOf(person)
@@ -93,10 +93,18 @@ test('U15 with the session timeout the admin sets, a person who leaves the tab a
 
   const admin = await browserOf(THE_ADMIN)
   await saveSettings(admin, { 'Session Timeout (minutes)': '1' })
-  // The person is away from the screen; time on the server has no event to wait for.
+  // Someone who signs in after the change, under the new timeout.
+  const later = await browserOf(given.user())
+  await nav(later).getByRole('link', { name: 'Account' }).click()
+  await expect(later.getByRole('heading', { name: 'Profile' })).toBeVisible()
+  // Both are away from the screen; time on the server has no event to wait for.
   await page.waitForTimeout(61_000)
   await nav(page).getByRole('link', { name: 'Devices' }).click()
   await expect(page).toHaveURL(/\/login$/)
+  await expect(flash(page)).toHaveText('You were signed out after being idle')
+  await nav(later).getByRole('link', { name: 'Devices' }).click()
+  await expect(later).toHaveURL(/\/login$/)
+  await expect(flash(later)).toHaveText('You were signed out after being idle')
 
   // The account is fine: signed in again, a session in use goes on.
   await logIn(page, person)
